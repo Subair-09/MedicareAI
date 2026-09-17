@@ -28,6 +28,7 @@ app.use((req, res, next) => {
     req.url.startsWith('/patients') ||
     req.url.startsWith('/hospital') ||
     req.url.startsWith('/ai') ||
+    req.url.startsWith('/email') ||
     req.url.startsWith('/send-email') ||
     req.url.startsWith('/verification') ||
     req.url.startsWith('/schedule-appointments')
@@ -682,8 +683,8 @@ app.use((req, res, next) => {
       }
 
       // Trigger automated Resend reschedule notification email
-      emailService
-        .sendRescheduleConfirmation({
+      try {
+        await emailService.sendRescheduleConfirmation({
           id: target.id,
           patientName: target.patientName,
           patientEmail: target.patientEmail,
@@ -694,8 +695,10 @@ app.use((req, res, next) => {
           previousDate: target.date,
           previousTime: target.time,
           room: target.room,
-        })
-        .catch((e) => console.warn('[Resend] Reschedule email warning:', e?.message || e));
+        });
+      } catch (e: any) {
+        console.warn('[Resend] Reschedule email warning:', e?.message || e);
+      }
 
       // Clear any temporary verification session
       verificationService.consume(id);
@@ -735,8 +738,8 @@ app.use((req, res, next) => {
       }
 
       // Trigger automated Resend cancellation notification email
-      emailService
-        .sendCancellationConfirmation({
+      try {
+        await emailService.sendCancellationConfirmation({
           id: target.id,
           patientName: target.patientName,
           patientEmail: target.patientEmail,
@@ -745,8 +748,10 @@ app.use((req, res, next) => {
           date: target.date,
           time: target.time,
           reason: reason || 'Cancelled upon patient request',
-        })
-        .catch((e) => console.warn('[Resend] Cancellation email warning:', e?.message || e));
+        });
+      } catch (e: any) {
+        console.warn('[Resend] Cancellation email warning:', e?.message || e);
+      }
 
       // Clear any temporary verification session
       verificationService.consume(id);
@@ -768,8 +773,8 @@ app.use((req, res, next) => {
 
       // Trigger automated Resend booking confirmation email
       if (newAppt.patientEmail) {
-        emailService
-          .sendBookingConfirmation({
+        try {
+          await emailService.sendBookingConfirmation({
             id: newAppt.id,
             patientName: newAppt.patientName,
             patientEmail: newAppt.patientEmail,
@@ -780,8 +785,10 @@ app.use((req, res, next) => {
             room: newAppt.room,
             fee: newAppt.fee,
             notes: newAppt.notes,
-          })
-          .catch((e) => console.warn('[Resend] Booking email warning:', e?.message || e));
+          });
+        } catch (e: any) {
+          console.warn('[Resend] Booking email warning:', e?.message || e);
+        }
       }
 
       res.status(201).json({ message: 'Appointment booked successfully', appointment: newAppt });
@@ -802,8 +809,8 @@ app.use((req, res, next) => {
 
       // Check if status transitioned to Cancelled
       if (req.body?.status === 'Cancelled' && previous?.status !== 'Cancelled' && updated.patientEmail) {
-        emailService
-          .sendCancellationConfirmation({
+        try {
+          await emailService.sendCancellationConfirmation({
             id: updated.id,
             patientName: updated.patientName,
             patientEmail: updated.patientEmail,
@@ -812,16 +819,18 @@ app.use((req, res, next) => {
             date: updated.date,
             time: updated.time,
             reason: req.body?.notes || 'Updated by hospital staff',
-          })
-          .catch((e) => console.warn('[Resend] Cancel email warning:', e?.message || e));
+          });
+        } catch (e: any) {
+          console.warn('[Resend] Cancel email warning:', e?.message || e);
+        }
       } else if (
         (req.body?.date && req.body.date !== previous?.date) ||
         (req.body?.time && req.body.time !== previous?.time)
       ) {
         // Rescheduled
         if (updated.patientEmail) {
-          emailService
-            .sendRescheduleConfirmation({
+          try {
+            await emailService.sendRescheduleConfirmation({
               id: updated.id,
               patientName: updated.patientName,
               patientEmail: updated.patientEmail,
@@ -832,8 +841,10 @@ app.use((req, res, next) => {
               previousDate: previous?.date,
               previousTime: previous?.time,
               room: updated.room,
-            })
-            .catch((e) => console.warn('[Resend] Reschedule email warning:', e?.message || e));
+            });
+          } catch (e: any) {
+            console.warn('[Resend] Reschedule email warning:', e?.message || e);
+          }
         }
       }
 
@@ -855,16 +866,20 @@ app.use((req, res, next) => {
     }
   });
 
-  app.post('/api/email/test', async (req, res) => {
+  const handleTestEmail = async (req: express.Request, res: express.Response) => {
     try {
-      const { recipient } = req.body || {};
+      const recipient = (req.body?.recipient || req.query?.to || req.query?.recipient || req.body?.to) as string | undefined;
       const targetEmail = recipient?.trim() || 'nuddywale@gmail.com';
       const result = await emailService.sendTestEmail(targetEmail);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to send test email' });
     }
-  });
+  };
+
+  app.post('/api/email/test', handleTestEmail);
+  app.get('/api/email/test', handleTestEmail);
+  app.post('/api/send-email', handleTestEmail);
 
   app.delete('/api/appointments/:id', async (req, res) => {
     try {

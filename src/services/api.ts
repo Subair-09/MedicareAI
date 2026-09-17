@@ -680,10 +680,13 @@ export const api = {
 
   async getEmailStatus(): Promise<{
     configured: boolean;
+    maskedApiKey?: string;
     fromEmail: string;
+    isResendDev?: boolean;
+    hint?: string;
     recentLogs: Array<{
       id: string;
-      type: 'booking' | 'reschedule' | 'cancellation' | 'test';
+      type: 'booking' | 'reschedule' | 'cancellation' | 'verification' | 'test';
       recipient: string;
       patientName: string;
       appointmentId: string;

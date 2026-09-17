@@ -29,7 +29,8 @@ export default function App() {
     if (hash === '#admin-schedules') return 'admin-schedules';
     if (hash === '#admin-knowledge-base') return 'admin-knowledge-base';
     if (hash === '#admin-login' || hash === '#admin') return 'admin-login';
-    return 'admin-knowledge-base';
+    // Default view when app is loaded for the first time
+    return 'landing';
   });
 
   const [adminUser, setAdminUser] = useState<{ email: string; name: string; role: string; token?: string } | null>(() => {
@@ -48,32 +49,38 @@ export default function App() {
   });
 
   useEffect(() => {
-    // If the URL has a hash pointing to a specific view
-    if (window.location.hash === '#chat') {
-      setCurrentView('chat');
-    } else if (window.location.hash === '#landing' || window.location.hash === '#home') {
-      setCurrentView('landing');
-    } else if (window.location.hash === '#admin-dashboard') {
-      setCurrentView('admin-dashboard');
-    } else if (window.location.hash === '#admin-appointments' || window.location.hash === '#appointments') {
-      setCurrentView('admin-appointments');
-    } else if (window.location.hash === '#admin-doctors' || window.location.hash === '#doctors') {
-      setCurrentView('admin-doctors');
-    } else if (window.location.hash === '#admin-departments' || window.location.hash === '#departments') {
-      setCurrentView('admin-departments');
-    } else if (window.location.hash === '#admin-patients' || window.location.hash === '#patients') {
-      setCurrentView('admin-patients');
-    } else if (window.location.hash === '#admin-schedules' || window.location.hash === '#schedules' || window.location.hash === '#schedule') {
-      setCurrentView('admin-schedules');
-    } else if (
-      window.location.hash === '#admin-knowledge-base' ||
-      window.location.hash === '#knowledge-base' ||
-      window.location.hash === '#knowledge'
-    ) {
-      setCurrentView('admin-knowledge-base');
-    } else if (window.location.hash === '#admin' || window.location.hash === '#admin-login') {
-      setCurrentView('admin-login');
-    }
+    const syncViewWithHash = () => {
+      const hash = window.location.hash;
+      if (hash === '#chat') {
+        setCurrentView('chat');
+      } else if (hash === '#landing' || hash === '#home' || !hash || hash === '#') {
+        setCurrentView('landing');
+      } else if (hash === '#admin-dashboard') {
+        setCurrentView('admin-dashboard');
+      } else if (hash === '#admin-appointments' || hash === '#appointments') {
+        setCurrentView('admin-appointments');
+      } else if (hash === '#admin-doctors' || hash === '#doctors') {
+        setCurrentView('admin-doctors');
+      } else if (hash === '#admin-departments' || hash === '#departments') {
+        setCurrentView('admin-departments');
+      } else if (hash === '#admin-patients' || hash === '#patients') {
+        setCurrentView('admin-patients');
+      } else if (hash === '#admin-schedules' || hash === '#schedules' || hash === '#schedule') {
+        setCurrentView('admin-schedules');
+      } else if (
+        hash === '#admin-knowledge-base' ||
+        hash === '#knowledge-base' ||
+        hash === '#knowledge'
+      ) {
+        setCurrentView('admin-knowledge-base');
+      } else if (hash === '#admin' || hash === '#admin-login') {
+        setCurrentView('admin-login');
+      }
+    };
+
+    syncViewWithHash();
+    window.addEventListener('hashchange', syncViewWithHash);
+    return () => window.removeEventListener('hashchange', syncViewWithHash);
   }, []);
 
   const handleSuccessLogin = (info: { email: string; name: string; role: string }) => {

@@ -1227,7 +1227,8 @@ var EmailService = class {
     this.recentLogs = [];
   }
   getClient() {
-    const apiKey = process.env.RESEND_API_KEY?.trim();
+    const rawKey = process.env.RESEND_API_KEY || "";
+    const apiKey = rawKey.trim().replace(/^["']|["']$/g, "");
     if (!apiKey) return null;
     if (!this.resendClient) {
       this.resendClient = new Resend(apiKey);
@@ -1235,15 +1236,73 @@ var EmailService = class {
     return this.resendClient;
   }
   getFromEmail() {
-    return process.env.RESEND_FROM_EMAIL?.trim() || "MediCare Hospital <noreply@medicare.name.ng>";
+    const rawFrom = process.env.RESEND_FROM_EMAIL?.trim().replace(/^["']|["']$/g, "");
+    if (rawFrom && !rawFrom.includes("medicare.name.ng")) {
+      return rawFrom;
+    }
+    return "MediCare Hospital <onboarding@resend.dev>";
   }
   getStatus() {
-    const hasApiKey = Boolean(process.env.RESEND_API_KEY?.trim());
+    const rawKey = process.env.RESEND_API_KEY || "";
+    const apiKey = rawKey.trim().replace(/^["']|["']$/g, "");
+    const hasApiKey = Boolean(apiKey);
+    const maskedKey = hasApiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : "Not configured";
+    const currentFrom = this.getFromEmail();
+    const isUsingOnboarding = currentFrom.includes("onboarding@resend.dev");
     return {
       configured: hasApiKey,
-      fromEmail: this.getFromEmail(),
-      recentLogs: this.recentLogs.slice(-20)
+      maskedApiKey: maskedKey,
+      fromEmail: currentFrom,
+      isResendDev: isUsingOnboarding,
+      recentLogs: this.recentLogs.slice(0, 25),
+      hint: !hasApiKey ? "Set RESEND_API_KEY in your Vercel Environment Variables to enable live email delivery." : isUsingOnboarding ? "Using onboarding@resend.dev. In Resend free sandbox mode, you can deliver emails to your registered Resend account email. To send to any recipient, verify your domain in resend.com/domains and set RESEND_FROM_EMAIL." : `Sending from ${currentFrom}. Ensure this domain is verified with active DNS records in your Resend dashboard.`
     };
+  }
+  /**
+   * Internal helper that sends an email via Resend with automatic fallback
+   * to onboarding@resend.dev if a custom unverified domain is rejected.
+   */
+  async dispatchEmail(payload) {
+    const client = this.getClient();
+    if (!client) {
+      return { success: false, error: "RESEND_API_KEY not configured" };
+    }
+    const primaryFrom = this.getFromEmail();
+    try {
+      const result = await client.emails.send({
+        from: primaryFrom,
+        to: payload.to,
+        subject: payload.subject,
+        html: payload.html
+      });
+      if (!result.error) {
+        return { success: true, data: result.data };
+      }
+      const errMsg = result.error.message || "";
+      const isDomainError = errMsg.toLowerCase().includes("not verified") || errMsg.toLowerCase().includes("domain") || result.error.name === "validation_error";
+      if (isDomainError && !primaryFrom.includes("onboarding@resend.dev")) {
+        console.warn(
+          `[Resend] Custom domain rejected (${errMsg}). Retrying once with default "MediCare Hospital <onboarding@resend.dev>"...`
+        );
+        const retryResult = await client.emails.send({
+          from: "MediCare Hospital <onboarding@resend.dev>",
+          to: payload.to,
+          subject: payload.subject,
+          html: payload.html
+        });
+        if (!retryResult.error) {
+          console.log("[Resend] Successful delivery via fallback onboarding@resend.dev");
+          return { success: true, data: retryResult.data, usedFallback: true };
+        }
+        return {
+          success: false,
+          error: `${retryResult.error.message} (Note: In Resend sandbox mode, test emails can only be sent to your registered account email)`
+        };
+      }
+      return { success: false, error: result.error.message };
+    } catch (err) {
+      return { success: false, error: err.message || "Unknown network error" };
+    }
   }
   logDelivery(entry) {
     this.recentLogs.unshift(entry);
@@ -1368,44 +1427,13 @@ var EmailService = class {
       });
       return { success: true, simulated: true };
     }
-    try {
-      const response = await client.emails.send({
-        from: this.getFromEmail(),
-        to: recipient,
-        subject,
-        html: htmlContent
-      });
-      if (response.error) {
-        console.error("[Resend Error sending booking email]:", response.error);
-        this.logDelivery({
-          id: logId,
-          type: "booking",
-          recipient,
-          patientName: appointment.patientName,
-          appointmentId: appointment.id,
-          doctorName: appointment.doctorName,
-          subject,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          status: "failed",
-          error: response.error.message || "Resend API error"
-        });
-        return { success: false, error: response.error.message };
-      }
-      console.log(`[Resend] Successfully sent booking confirmation to ${recipient} (Ref: ${appointment.id}, MessageId: ${response.data?.id})`);
-      this.logDelivery({
-        id: response.data?.id || logId,
-        type: "booking",
-        recipient,
-        patientName: appointment.patientName,
-        appointmentId: appointment.id,
-        doctorName: appointment.doctorName,
-        subject,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        status: "sent"
-      });
-      return { success: true, messageId: response.data?.id };
-    } catch (err) {
-      console.error("[Resend Exception sending booking confirmation]:", err.message || err);
+    const response = await this.dispatchEmail({
+      to: recipient,
+      subject,
+      html: htmlContent
+    });
+    if (!response.success) {
+      console.error("[Resend Error sending booking email]:", response.error);
       this.logDelivery({
         id: logId,
         type: "booking",
@@ -1416,10 +1444,23 @@ var EmailService = class {
         subject,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         status: "failed",
-        error: err.message || "Network exception"
+        error: response.error
       });
-      return { success: false, error: err.message };
+      return { success: false, error: response.error };
     }
+    console.log(`[Resend] Successfully sent booking confirmation to ${recipient} (Ref: ${appointment.id}, MessageId: ${response.data?.id})`);
+    this.logDelivery({
+      id: response.data?.id || logId,
+      type: "booking",
+      recipient,
+      patientName: appointment.patientName,
+      appointmentId: appointment.id,
+      doctorName: appointment.doctorName,
+      subject,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "sent"
+    });
+    return { success: true, messageId: response.data?.id };
   }
   // 2. Send Reschedule Confirmation Email
   async sendRescheduleConfirmation(appointment) {
@@ -1520,44 +1561,13 @@ var EmailService = class {
       });
       return { success: true, simulated: true };
     }
-    try {
-      const response = await client.emails.send({
-        from: this.getFromEmail(),
-        to: recipient,
-        subject,
-        html: htmlContent
-      });
-      if (response.error) {
-        console.error("[Resend Error sending reschedule email]:", response.error);
-        this.logDelivery({
-          id: logId,
-          type: "reschedule",
-          recipient,
-          patientName: appointment.patientName,
-          appointmentId: appointment.id,
-          doctorName: appointment.doctorName,
-          subject,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          status: "failed",
-          error: response.error.message
-        });
-        return { success: false, error: response.error.message };
-      }
-      console.log(`[Resend] Successfully sent reschedule confirmation to ${recipient} (Ref: ${appointment.id})`);
-      this.logDelivery({
-        id: response.data?.id || logId,
-        type: "reschedule",
-        recipient,
-        patientName: appointment.patientName,
-        appointmentId: appointment.id,
-        doctorName: appointment.doctorName,
-        subject,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        status: "sent"
-      });
-      return { success: true, messageId: response.data?.id };
-    } catch (err) {
-      console.error("[Resend Exception sending reschedule email]:", err.message || err);
+    const response = await this.dispatchEmail({
+      to: recipient,
+      subject,
+      html: htmlContent
+    });
+    if (!response.success) {
+      console.error("[Resend Error sending reschedule email]:", response.error);
       this.logDelivery({
         id: logId,
         type: "reschedule",
@@ -1568,10 +1578,23 @@ var EmailService = class {
         subject,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         status: "failed",
-        error: err.message
+        error: response.error
       });
-      return { success: false, error: err.message };
+      return { success: false, error: response.error };
     }
+    console.log(`[Resend] Successfully sent reschedule confirmation to ${recipient} (Ref: ${appointment.id})`);
+    this.logDelivery({
+      id: response.data?.id || logId,
+      type: "reschedule",
+      recipient,
+      patientName: appointment.patientName,
+      appointmentId: appointment.id,
+      doctorName: appointment.doctorName,
+      subject,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "sent"
+    });
+    return { success: true, messageId: response.data?.id };
   }
   // 3. Send Cancellation Confirmation Email
   async sendCancellationConfirmation(appointment) {
@@ -1672,44 +1695,13 @@ var EmailService = class {
       });
       return { success: true, simulated: true };
     }
-    try {
-      const response = await client.emails.send({
-        from: this.getFromEmail(),
-        to: recipient,
-        subject,
-        html: htmlContent
-      });
-      if (response.error) {
-        console.error("[Resend Error sending cancellation email]:", response.error);
-        this.logDelivery({
-          id: logId,
-          type: "cancellation",
-          recipient,
-          patientName: appointment.patientName,
-          appointmentId: appointment.id,
-          doctorName: appointment.doctorName,
-          subject,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          status: "failed",
-          error: response.error.message
-        });
-        return { success: false, error: response.error.message };
-      }
-      console.log(`[Resend] Successfully sent cancellation confirmation to ${recipient} (Ref: ${appointment.id})`);
-      this.logDelivery({
-        id: response.data?.id || logId,
-        type: "cancellation",
-        recipient,
-        patientName: appointment.patientName,
-        appointmentId: appointment.id,
-        doctorName: appointment.doctorName,
-        subject,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        status: "sent"
-      });
-      return { success: true, messageId: response.data?.id };
-    } catch (err) {
-      console.error("[Resend Exception sending cancellation email]:", err.message || err);
+    const response = await this.dispatchEmail({
+      to: recipient,
+      subject,
+      html: htmlContent
+    });
+    if (!response.success) {
+      console.error("[Resend Error sending cancellation email]:", response.error);
       this.logDelivery({
         id: logId,
         type: "cancellation",
@@ -1720,10 +1712,23 @@ var EmailService = class {
         subject,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         status: "failed",
-        error: err.message
+        error: response.error
       });
-      return { success: false, error: err.message };
+      return { success: false, error: response.error };
     }
+    console.log(`[Resend] Successfully sent cancellation confirmation to ${recipient} (Ref: ${appointment.id})`);
+    this.logDelivery({
+      id: response.data?.id || logId,
+      type: "cancellation",
+      recipient,
+      patientName: appointment.patientName,
+      appointmentId: appointment.id,
+      doctorName: appointment.doctorName,
+      subject,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "sent"
+    });
+    return { success: true, messageId: response.data?.id };
   }
   // 4. Send 2FA Verification Code Email for Rescheduling or Cancellation
   async sendVerificationCode(params) {
@@ -1834,44 +1839,13 @@ var EmailService = class {
       });
       return { success: true, simulated: true, messageId: logId };
     }
-    try {
-      const response = await client.emails.send({
-        from: this.getFromEmail(),
-        to: recipient,
-        subject,
-        html: htmlContent
-      });
-      if (response.error) {
-        console.error("[Resend Error sending verification code]:", response.error);
-        this.logDelivery({
-          id: logId,
-          type: "verification",
-          recipient,
-          patientName: params.patientName,
-          appointmentId: params.appointmentId,
-          doctorName: params.doctorName,
-          subject,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          status: "failed",
-          error: response.error.message
-        });
-        return { success: false, error: response.error.message };
-      }
-      console.log(`[Resend] Successfully sent verification code ${params.code} to ${recipient}`);
-      this.logDelivery({
-        id: response.data?.id || logId,
-        type: "verification",
-        recipient,
-        patientName: params.patientName,
-        appointmentId: params.appointmentId,
-        doctorName: params.doctorName,
-        subject,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        status: "sent"
-      });
-      return { success: true, messageId: response.data?.id };
-    } catch (err) {
-      console.error("[Resend Exception sending verification code]:", err.message || err);
+    const response = await this.dispatchEmail({
+      to: recipient,
+      subject,
+      html: htmlContent
+    });
+    if (!response.success) {
+      console.error("[Resend Error sending verification code]:", response.error);
       this.logDelivery({
         id: logId,
         type: "verification",
@@ -1882,10 +1856,23 @@ var EmailService = class {
         subject,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         status: "failed",
-        error: err.message
+        error: response.error
       });
-      return { success: false, error: err.message };
+      return { success: false, error: response.error };
     }
+    console.log(`[Resend] Successfully sent verification code ${params.code} to ${recipient}`);
+    this.logDelivery({
+      id: response.data?.id || logId,
+      type: "verification",
+      recipient,
+      patientName: params.patientName,
+      appointmentId: params.appointmentId,
+      doctorName: params.doctorName,
+      subject,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "sent"
+    });
+    return { success: true, messageId: response.data?.id };
   }
   // 5. Test Email Sending
   async sendTestEmail(recipientEmail) {
@@ -1914,30 +1901,14 @@ var EmailService = class {
       });
       return { success: true, simulated: true };
     }
-    try {
-      const response = await client.emails.send({
-        from: this.getFromEmail(),
-        to: recipientEmail,
-        subject,
-        html: htmlContent
-      });
-      if (response.error) {
-        this.logDelivery({
-          id: logId,
-          type: "test",
-          recipient: recipientEmail,
-          patientName: "Admin Tester",
-          appointmentId: "TEST-001",
-          doctorName: "System",
-          subject,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-          status: "failed",
-          error: response.error.message
-        });
-        return { success: false, error: response.error.message };
-      }
+    const response = await this.dispatchEmail({
+      to: recipientEmail,
+      subject,
+      html: htmlContent
+    });
+    if (!response.success) {
       this.logDelivery({
-        id: response.data?.id || logId,
+        id: logId,
         type: "test",
         recipient: recipientEmail,
         patientName: "Admin Tester",
@@ -1945,12 +1916,23 @@ var EmailService = class {
         doctorName: "System",
         subject,
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        status: "sent"
+        status: "failed",
+        error: response.error
       });
-      return { success: true, messageId: response.data?.id };
-    } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: response.error };
     }
+    this.logDelivery({
+      id: response.data?.id || logId,
+      type: "test",
+      recipient: recipientEmail,
+      patientName: "Admin Tester",
+      appointmentId: "TEST-001",
+      doctorName: "System",
+      subject,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "sent"
+    });
+    return { success: true, messageId: response.data?.id };
   }
 };
 var emailService = new EmailService();
@@ -2862,20 +2844,24 @@ Please select your preferred consultation time slot below:`,
       room: `${department} Suite`,
       notes: `Booked via MediCare AI. Ref: ${appointmentId}`
     }).catch((e) => console.warn("Schedule sync notice:", e.message));
-    emailService.sendBookingConfirmation({
-      id: appointmentId,
-      patientName,
-      patientEmail: patient.email || patientEmail,
-      patientPhone,
-      doctorName,
-      doctorSpecialty: "Consultant Specialist",
-      department: department || "General Medicine",
-      date,
-      time,
-      room: `${department} Suite`,
-      fee,
-      notes: reasonForVisit
-    }).catch((err) => console.warn("[Resend] Booking email notice:", err?.message || err));
+    try {
+      await emailService.sendBookingConfirmation({
+        id: appointmentId,
+        patientName,
+        patientEmail: patient.email || patientEmail,
+        patientPhone,
+        doctorName,
+        doctorSpecialty: "Consultant Specialist",
+        department: department || "General Medicine",
+        date,
+        time,
+        room: `${department} Suite`,
+        fee,
+        notes: reasonForVisit
+      });
+    } catch (err) {
+      console.warn("[Resend] Booking email notice:", err?.message || err);
+    }
     return {
       success: true,
       appointment: newAppointment,
@@ -3335,7 +3321,7 @@ var app = express();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use((req, res, next) => {
-  if (req.url && !req.url.startsWith("/api") && (req.url.startsWith("/cloudinary") || req.url.startsWith("/upload") || req.url.startsWith("/admin") || req.url.startsWith("/doctors") || req.url.startsWith("/departments") || req.url.startsWith("/appointments") || req.url.startsWith("/patients") || req.url.startsWith("/hospital") || req.url.startsWith("/ai") || req.url.startsWith("/send-email") || req.url.startsWith("/verification") || req.url.startsWith("/schedule-appointments"))) {
+  if (req.url && !req.url.startsWith("/api") && (req.url.startsWith("/cloudinary") || req.url.startsWith("/upload") || req.url.startsWith("/admin") || req.url.startsWith("/doctors") || req.url.startsWith("/departments") || req.url.startsWith("/appointments") || req.url.startsWith("/patients") || req.url.startsWith("/hospital") || req.url.startsWith("/ai") || req.url.startsWith("/email") || req.url.startsWith("/send-email") || req.url.startsWith("/verification") || req.url.startsWith("/schedule-appointments"))) {
     req.url = "/api" + req.url;
   }
   next();
@@ -3846,18 +3832,22 @@ app.post("/api/appointments/:id/reschedule", async (req, res) => {
       const dayName = !isNaN(parsedDate.getTime()) ? daysOfWeek[parsedDate.getDay()] : "Monday";
       await mongoDb.updateSchedule(sch.id, { date, time, timeSlot: time, dayOfWeek: dayName, status: "Rescheduled" });
     }
-    emailService.sendRescheduleConfirmation({
-      id: target.id,
-      patientName: target.patientName,
-      patientEmail: target.patientEmail,
-      doctorName: target.doctorName,
-      department: target.department,
-      newDate: date,
-      newTime: time,
-      previousDate: target.date,
-      previousTime: target.time,
-      room: target.room
-    }).catch((e) => console.warn("[Resend] Reschedule email warning:", e?.message || e));
+    try {
+      await emailService.sendRescheduleConfirmation({
+        id: target.id,
+        patientName: target.patientName,
+        patientEmail: target.patientEmail,
+        doctorName: target.doctorName,
+        department: target.department,
+        newDate: date,
+        newTime: time,
+        previousDate: target.date,
+        previousTime: target.time,
+        room: target.room
+      });
+    } catch (e) {
+      console.warn("[Resend] Reschedule email warning:", e?.message || e);
+    }
     verificationService.consume(id);
     return res.json({
       success: true,
@@ -3886,16 +3876,20 @@ app.post("/api/appointments/:id/cancel", async (req, res) => {
     if (sch) {
       await mongoDb.updateSchedule(sch.id, { status: "Cancelled" });
     }
-    emailService.sendCancellationConfirmation({
-      id: target.id,
-      patientName: target.patientName,
-      patientEmail: target.patientEmail,
-      doctorName: target.doctorName,
-      department: target.department,
-      date: target.date,
-      time: target.time,
-      reason: reason || "Cancelled upon patient request"
-    }).catch((e) => console.warn("[Resend] Cancellation email warning:", e?.message || e));
+    try {
+      await emailService.sendCancellationConfirmation({
+        id: target.id,
+        patientName: target.patientName,
+        patientEmail: target.patientEmail,
+        doctorName: target.doctorName,
+        department: target.department,
+        date: target.date,
+        time: target.time,
+        reason: reason || "Cancelled upon patient request"
+      });
+    } catch (e) {
+      console.warn("[Resend] Cancellation email warning:", e?.message || e);
+    }
     verificationService.consume(id);
     return res.json({
       success: true,
@@ -3910,18 +3904,22 @@ app.post("/api/appointments", async (req, res) => {
   try {
     const newAppt = await mongoDb.createAppointment(req.body);
     if (newAppt.patientEmail) {
-      emailService.sendBookingConfirmation({
-        id: newAppt.id,
-        patientName: newAppt.patientName,
-        patientEmail: newAppt.patientEmail,
-        doctorName: newAppt.doctorName,
-        department: newAppt.department,
-        date: newAppt.date,
-        time: newAppt.time,
-        room: newAppt.room,
-        fee: newAppt.fee,
-        notes: newAppt.notes
-      }).catch((e) => console.warn("[Resend] Booking email warning:", e?.message || e));
+      try {
+        await emailService.sendBookingConfirmation({
+          id: newAppt.id,
+          patientName: newAppt.patientName,
+          patientEmail: newAppt.patientEmail,
+          doctorName: newAppt.doctorName,
+          department: newAppt.department,
+          date: newAppt.date,
+          time: newAppt.time,
+          room: newAppt.room,
+          fee: newAppt.fee,
+          notes: newAppt.notes
+        });
+      } catch (e) {
+        console.warn("[Resend] Booking email warning:", e?.message || e);
+      }
     }
     res.status(201).json({ message: "Appointment booked successfully", appointment: newAppt });
   } catch (error) {
@@ -3937,30 +3935,38 @@ app.put("/api/appointments/:id", async (req, res) => {
       return res.status(404).json({ error: "Appointment not found" });
     }
     if (req.body?.status === "Cancelled" && previous?.status !== "Cancelled" && updated.patientEmail) {
-      emailService.sendCancellationConfirmation({
-        id: updated.id,
-        patientName: updated.patientName,
-        patientEmail: updated.patientEmail,
-        doctorName: updated.doctorName,
-        department: updated.department,
-        date: updated.date,
-        time: updated.time,
-        reason: req.body?.notes || "Updated by hospital staff"
-      }).catch((e) => console.warn("[Resend] Cancel email warning:", e?.message || e));
-    } else if (req.body?.date && req.body.date !== previous?.date || req.body?.time && req.body.time !== previous?.time) {
-      if (updated.patientEmail) {
-        emailService.sendRescheduleConfirmation({
+      try {
+        await emailService.sendCancellationConfirmation({
           id: updated.id,
           patientName: updated.patientName,
           patientEmail: updated.patientEmail,
           doctorName: updated.doctorName,
           department: updated.department,
-          newDate: updated.date,
-          newTime: updated.time,
-          previousDate: previous?.date,
-          previousTime: previous?.time,
-          room: updated.room
-        }).catch((e) => console.warn("[Resend] Reschedule email warning:", e?.message || e));
+          date: updated.date,
+          time: updated.time,
+          reason: req.body?.notes || "Updated by hospital staff"
+        });
+      } catch (e) {
+        console.warn("[Resend] Cancel email warning:", e?.message || e);
+      }
+    } else if (req.body?.date && req.body.date !== previous?.date || req.body?.time && req.body.time !== previous?.time) {
+      if (updated.patientEmail) {
+        try {
+          await emailService.sendRescheduleConfirmation({
+            id: updated.id,
+            patientName: updated.patientName,
+            patientEmail: updated.patientEmail,
+            doctorName: updated.doctorName,
+            department: updated.department,
+            newDate: updated.date,
+            newTime: updated.time,
+            previousDate: previous?.date,
+            previousTime: previous?.time,
+            room: updated.room
+          });
+        } catch (e) {
+          console.warn("[Resend] Reschedule email warning:", e?.message || e);
+        }
       }
     }
     res.json({ message: "Appointment updated", appointment: updated });
@@ -3976,16 +3982,19 @@ app.get("/api/email/status", (req, res) => {
     res.status(500).json({ error: error.message || "Failed to check Resend email status" });
   }
 });
-app.post("/api/email/test", async (req, res) => {
+var handleTestEmail = async (req, res) => {
   try {
-    const { recipient } = req.body || {};
+    const recipient = req.body?.recipient || req.query?.to || req.query?.recipient || req.body?.to;
     const targetEmail = recipient?.trim() || "nuddywale@gmail.com";
     const result = await emailService.sendTestEmail(targetEmail);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message || "Failed to send test email" });
   }
-});
+};
+app.post("/api/email/test", handleTestEmail);
+app.get("/api/email/test", handleTestEmail);
+app.post("/api/send-email", handleTestEmail);
 app.delete("/api/appointments/:id", async (req, res) => {
   try {
     const success = await mongoDb.deleteAppointment(req.params.id);

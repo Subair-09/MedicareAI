@@ -24,10 +24,13 @@ interface ResendStatusModalProps {
 export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, onClose }) => {
   const [status, setStatus] = useState<{
     configured: boolean;
+    maskedApiKey?: string;
     fromEmail: string;
+    isResendDev?: boolean;
+    hint?: string;
     recentLogs: Array<{
       id: string;
-      type: 'booking' | 'reschedule' | 'cancellation' | 'test';
+      type: 'booking' | 'reschedule' | 'cancellation' | 'verification' | 'test';
       recipient: string;
       patientName: string;
       appointmentId: string;
@@ -48,6 +51,7 @@ export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, on
     message?: string;
     error?: string;
   } | null>(null);
+  const [showVercelGuide, setShowVercelGuide] = useState(false);
 
   const fetchStatus = async () => {
     setIsLoading(true);
@@ -151,9 +155,16 @@ export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, on
                   : 'Resend Ready (Local Simulator Active)'}
               </span>
               {status?.configured ? (
-                <span>
-                  Real-time transactional emails are actively dispatched for every booking, reschedule, and cancellation.
-                </span>
+                <div>
+                  <span>
+                    Real-time transactional emails are actively dispatched for every booking, reschedule, and cancellation.
+                  </span>
+                  {status?.hint && (
+                    <div className="mt-1 font-medium text-[12px] opacity-90">
+                      ℹ️ {status.hint}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <span>
                   Emails are generated and tracked in the hospital activity audit log. Add <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] font-bold text-[#102A52]">RESEND_API_KEY</code> to send live production emails.
@@ -169,7 +180,9 @@ export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, on
                 <Key className="w-3.5 h-3.5 text-[#0878F9]" /> Service Provider
               </span>
               <div className="font-bold text-[#102A52] text-[13.5px]">Resend Transactional API</div>
-              <div className="text-[11.5px] text-[#64748B]">SDK package installed</div>
+              <div className="text-[11.5px] text-[#64748B] font-mono mt-0.5">
+                Key: {status?.maskedApiKey || 'None'}
+              </div>
             </div>
 
             <div className="p-3.5 rounded-[12px] bg-[#F8FAFC] border border-[#E2E8F0]">
@@ -177,10 +190,50 @@ export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, on
                 <Shield className="w-3.5 h-3.5 text-[#0878F9]" /> Outbound From Address
               </span>
               <div className="font-bold text-[#102A52] text-[13px] truncate">
-                {status?.fromEmail || 'MediCare Hospital <noreply@medicare.name.ng>'}
+                {status?.fromEmail || 'MediCare Hospital <onboarding@resend.dev>'}
               </div>
-              <div className="text-[11.5px] text-[#64748B]">Configured via RESEND_FROM_EMAIL</div>
+              <div className="text-[11.5px] text-[#64748B] flex items-center gap-1 mt-0.5">
+                {status?.isResendDev ? (
+                  <span className="text-[#D97706] font-medium">Sandbox Mode (onboarding@resend.dev)</span>
+                ) : (
+                  <span className="text-[#16A34A] font-medium">Custom Domain Sender</span>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Vercel Deployment Checklist Toggle */}
+          <div className="rounded-[12px] border border-[#E1EDF9] bg-[#F8FAFC] p-3 text-[12px]">
+            <button
+              type="button"
+              onClick={() => setShowVercelGuide(!showVercelGuide)}
+              className="w-full flex items-center justify-between font-bold text-[#102A52] hover:text-[#0878F9] cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#0878F9]" />
+                How to configure Email on Vercel
+              </span>
+              <span className="text-[11px] text-[#0878F9]">{showVercelGuide ? 'Hide Guide ▲' : 'Show Guide ▼'}</span>
+            </button>
+
+            {showVercelGuide && (
+              <div className="mt-3 pt-3 border-t border-[#E2E8F0] space-y-2 text-[#475569] leading-relaxed">
+                <p>To enable real email delivery on your Vercel deployment (<code className="font-mono text-[11px] bg-white px-1 py-0.5 rounded border border-[#E2E8F0]">medicare-ai-tawny.vercel.app</code>):</p>
+                <ol className="list-decimal pl-4 space-y-1.5 text-[11.5px]">
+                  <li>Open your <strong>Vercel Project Settings → Environment Variables</strong>.</li>
+                  <li>
+                    Add <code className="font-bold font-mono text-[#0F172A] bg-white px-1 py-0.5 rounded">RESEND_API_KEY</code> with your key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-[#0878F9] underline">resend.com/api-keys</a> (starts with <code className="font-mono">re_...</code>).
+                  </li>
+                  <li>
+                    (Optional) Add <code className="font-bold font-mono text-[#0F172A] bg-white px-1 py-0.5 rounded">RESEND_FROM_EMAIL</code> with your verified domain sender (e.g., <code className="font-mono">MediCare &lt;noreply@yourdomain.com&gt;</code>). If omitted, it automatically uses the sandbox <code className="font-mono">onboarding@resend.dev</code>.
+                  </li>
+                  <li>
+                    <strong>Important for Free/Testing Tier:</strong> When using <code className="font-mono">onboarding@resend.dev</code>, Resend only allows sending to the email address registered on your Resend account. To send to any patient email, verify your domain under Resend Domains.
+                  </li>
+                  <li>After saving variables, click <strong>Redeploy</strong> in Vercel to activate them.</li>
+                </ol>
+              </div>
+            )}
           </div>
 
           {/* Test Dispatch Form */}

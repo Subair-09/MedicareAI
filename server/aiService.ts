@@ -1260,8 +1260,8 @@ Do not wrap with markdown backticks if possible, return raw JSON string.`;
     }).catch((e) => console.warn('Schedule sync notice:', e.message));
 
     // 5. Trigger automated booking confirmation email via Resend
-    emailService
-      .sendBookingConfirmation({
+    try {
+      await emailService.sendBookingConfirmation({
         id: appointmentId,
         patientName,
         patientEmail: patient.email || patientEmail,
@@ -1274,8 +1274,10 @@ Do not wrap with markdown backticks if possible, return raw JSON string.`;
         room: `${department} Suite`,
         fee,
         notes: reasonForVisit,
-      })
-      .catch((err) => console.warn('[Resend] Booking email notice:', err?.message || err));
+      });
+    } catch (err: any) {
+      console.warn('[Resend] Booking email notice:', err?.message || err);
+    }
 
     return {
       success: true,
