@@ -2122,11 +2122,11 @@ CONVERSATIONAL INTELLIGENCE & FLOW:
    - You have persistent memory of all uploaded Knowledge Base documents and PDFs extracted via OCR.
    - When patients or staff ask questions concerning MediCare Hospital policies, doctor instructions, scan preparations (e.g. fasting for abdominal ultrasound, metal restrictions for MRI, renal panel for contrast), emergency triage protocols, visiting hours, or accepted insurance, provide accurate answers drawn directly from the extracted document text above.
    - Quote or reference the hospital document naturally (e.g. "According to MediCare Hospital's Diagnostic Imaging Guidelines...").
-4. STRICT ENFORCEMENT ON APPOINTMENT BOOKING VIA THE IN-CHAT FORM:
-   - MANDATORY HOSPITAL POLICY: All patients who book an appointment through MediCare AI MUST use the official in-chat appointment booking form.
-   - The AI must ALWAYS provide the form for the appointment whenever a patient wants to book, asks to schedule, selects or requests a doctor, or provides booking details.
+4. STRICT ENFORCEMENT ON APPOINTMENT BOOKING VIA THE IN-CHAT FORM (NEW BOOKINGS ONLY):
+   - MANDATORY HOSPITAL POLICY: All patients who book a NEW consultation through MediCare AI MUST use the official in-chat appointment booking form.
+   - The AI must ALWAYS provide the form for NEW appointment bookings whenever a patient wants to book, selects or requests a doctor, or provides booking details.
    - The AI is STRICTLY PROHIBITED from taking, confirming, or booking appointments directly via conversational text messages or plain chat dialogue.
-   - The AI should ONLY take appointments via the interactive form that is supplied to the patient in the chat.
+   - The AI should ONLY take NEW bookings via the interactive form that is supplied to the patient in the chat.
    - Whenever the patient wants to book or provides their booking information (e.g., patient name, phone number, email, date, time):
      You MUST set "intent": "collect_info".
      Extract any details they provided into "patientFormDetails": {
@@ -2140,21 +2140,24 @@ CONVERSATIONAL INTELLIGENCE & FLOW:
        "preferredSlot": "..."
      }
      This ensures the official in-chat form is immediately supplied to the patient in the chat and pre-filled with whatever details they provided!
-   - In your conversational "reply", always inform the patient:
+   - In your conversational "reply", inform the patient:
      "To ensure medical record accuracy, patient confidentiality, and verified hospital scheduling, all appointments through MediCare AI must be submitted using our official in-chat Appointment Booking Form. I have supplied the form below\u2014please review or enter your details and submit the form to proceed."
-   - If a patient asks: "Can you just book it for me without the form?" or attempts to book by typing their info in chat:
-     You MUST NOT book it through text. Politely explain that hospital compliance strictly requires all bookings to be submitted through the in-chat form, and provide the form ("intent": "collect_info")!
-   - When a patient selects or requests a doctor or slot:
-     Set "intent": "collect_info", provide the doctor details and slots, and supply the booking form so they can complete the booking.
+   - CRITICAL RULE: CANCELLATION AND RESCHEDULING NEVER USE THE BOOKING FORM!
+     Do NOT supply the booking form, do NOT set "intent": "collect_info", and do NOT provide "patientFormDetails" when a patient asks to cancel or reschedule!
 
 5. QUESTIONS ABOUT DEPARTMENTS & DOCTORS:
    - "What departments do you have?": List the actual departments from the database with locations.
    - "Who are your doctors / radiologists / virologists?": List the actual doctors from the database for that department.
    - "Who are your dermatologists?": If we do not have dermatologists, explicitly state: "We do not currently have a Dermatology department in our hospital records. Our active departments are Virology, Radiology, and Disease Control."
-6. RESCHEDULING & CANCELLATION:
-   - Ask for Appointment ID (e.g. APT-2026-XXXX) or registered phone number.
-   - For cancellation: Ask for confirmation ("I found your appointment [ID] with [Doctor] on [Date] at [Time]. Are you sure you want to cancel it?").
-   - For rescheduling: Offer to show new available slots for that doctor.
+6. RESCHEDULING & CANCELLATION (2FA VERIFICATION CODE LOGIC - NO BOOKING FORM):
+   - For CANCELLATION or RESCHEDULING:
+     1. Set "intent": "cancel" or "intent": "reschedule".
+     2. DO NOT provide the in-chat booking form. Set "doctorId": null, do NOT provide "patientFormDetails".
+     3. Ask the patient for their Appointment Reference Number (e.g. APT-2026-1933 or MC-...) if they have not provided it yet.
+     4. Explain that for patient privacy, an automated 6-digit security verification code will be sent to their email via Resend to verify identity and authorize the change.
+     5. Once verified:
+        - For reschedule: The patient will be able to select a new date and time slot.
+        - For cancel: The cancellation will be confirmed.
 7. HOSPITAL KNOWLEDGE:
    - Use the approved Knowledge Base for hours, location, insurance, and prep.
 
@@ -2302,7 +2305,31 @@ Do not wrap with markdown backticks if possible, return raw JSON string.`;
   }
   // Centralized response processor ensuring strict hospital booking rules and data attachment
   processParsedResponse(parsed, userMessage, activeDoctors, appointments, context) {
-    const isBookingAttempt = parsed.intent === "summary_confirmation" || parsed.intent === "book" || parsed.intent === "confirm_booking" || /(\bbook\b|\bschedule\b|\breserve\b|\bappointment\b)/i.test(userMessage);
+    const isCancelRequest = parsed.intent === "cancel" || /\b(cancel|cancellation|delete\s+appointment|drop\s+appointment)\b/i.test(userMessage);
+    const isRescheduleRequest = parsed.intent === "reschedule" || /\b(reschedule|change\s+(?:date|time|slot|day)|move\s+appointment|postpone)\b/i.test(userMessage);
+    if (isCancelRequest) {
+      delete parsed.patientFormDetails;
+      delete parsed.doctorId;
+      const refMatch = userMessage.match(/APT-\d{4}-\d{4}|APT-[\w-]+|MC-[\w-]+/i);
+      const cleanReply = refMatch ? `I have received your cancellation request for appointment **${refMatch[0].toUpperCase()}**. To protect patient records, a 6-digit security code is being dispatched to your registered email to verify your identity and confirm cancellation.` : parsed.reply && !parsed.reply.includes("Appointment Booking Form") ? parsed.reply : "I can assist you with canceling your appointment. Please provide your **Appointment Reference Number** (e.g. `APT-2026-1933` as shown on your booking confirmation email) so we can locate your record and send a 6-digit security code to verify your identity.";
+      return {
+        reply: cleanReply,
+        intent: "cancel",
+        suggestedQuickReplies: ["Provide Appointment ID", "Check my confirmation email", "Hospital reception"]
+      };
+    }
+    if (isRescheduleRequest) {
+      delete parsed.patientFormDetails;
+      delete parsed.doctorId;
+      const refMatch = userMessage.match(/APT-\d{4}-\d{4}|APT-[\w-]+|MC-[\w-]+/i);
+      const cleanReply = refMatch ? `I have received your reschedule request for appointment **${refMatch[0].toUpperCase()}**. To authorize changing your consultation date or time, a 6-digit verification code is being sent to your registered email.` : parsed.reply && !parsed.reply.includes("Appointment Booking Form") ? parsed.reply : "I can help you reschedule your appointment to a new date and time. Please provide your **Appointment Reference Number** (e.g. `APT-2026-1933`) so we can retrieve your booking and send a 6-digit security verification code to authorize the change.";
+      return {
+        reply: cleanReply,
+        intent: "reschedule",
+        suggestedQuickReplies: ["Provide Appointment ID", "Check my confirmation email", "Keep my current slot"]
+      };
+    }
+    const isBookingAttempt = (parsed.intent === "summary_confirmation" || parsed.intent === "book" || parsed.intent === "confirm_booking" || /(\bbook\b|\bbooking\b|\bnew appointment\b|\bbook appointment\b|\bschedule consultation\b|\bschedule an appointment\b)/i.test(userMessage)) && !isCancelRequest && !isRescheduleRequest;
     const hasContactDetailsInText = /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(userMessage) || /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/.test(userMessage) || /(?:my name is|patient:?|for\s+[a-z]+)/i.test(userMessage);
     const isGeneralInquiry = /hours|visiting|departments|location|address|insurance|services\?/i.test(userMessage);
     if (parsed.intent === "summary_confirmation" || isBookingAttempt && hasContactDetailsInText || isBookingAttempt && !isGeneralInquiry && parsed.intent !== "emergency") {

@@ -416,7 +416,137 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         return;
       }
 
-      // If AI intent is to collect patient information via the official booking form
+      // =========================================================================
+      // 1. CANCELLATION & RESCHEDULING CHECKS (PRIORITY OVER BOOKING FORM):
+      // The in-chat booking form is strictly for NEW bookings only.
+      // Rescheduling and Cancellation NEVER show the booking form; they require
+      // the Appointment Reference Number and send a 6-digit verification code via Resend.
+      // =========================================================================
+      const idMatch = text.match(/APT-\d{4}-\d{4}|APT-[\w-]+|MC-[\w-]+/i);
+      let detectedRef: string | null = idMatch ? idMatch[0].toUpperCase() : null;
+
+      // If waiting for appointment reference, accept formats like "2026-1933" or "APT20261933"
+      if (!detectedRef && awaitingRefPurpose) {
+        const looseMatch = text.trim().match(/^(?:APT[-\s]?)?(\d{4}[-\s]?\d{3,4})$/i);
+        if (looseMatch) {
+          detectedRef = `APT-${looseMatch[1].replace(/\s+/g, '-')}`;
+        }
+      }
+
+      const isCancelIntent =
+        aiResponse.intent === 'cancel' ||
+        /\b(cancel|cancellation|delete\s+appointment|drop\s+appointment)\b/i.test(text) ||
+        awaitingRefPurpose === 'cancel';
+
+      const isRescheduleIntent =
+        aiResponse.intent === 'reschedule' ||
+        /\b(reschedule|change\s+(?:slot|date|time|day)|move\s+appointment|postpone)\b/i.test(text) ||
+        awaitingRefPurpose === 'reschedule';
+
+      if (isRescheduleIntent || isCancelIntent) {
+        const purpose: 'reschedule' | 'cancel' = isCancelIntent ? 'cancel' : 'reschedule';
+
+        // Case A: No reference number was provided yet
+        if (!detectedRef) {
+          setAwaitingRefPurpose(purpose);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'msg-ai-req-ref-' + Date.now(),
+              sender: 'ai',
+              text: `I would be pleased to help you **${purpose}** your appointment.\n\nTo locate your booking in our hospital system and protect patient privacy, could you please provide your **Appointment Reference Number**?\n\n*(For example: \`APT-2026-1933\` as shown on your booking confirmation email or SMS)*`,
+              timestamp: aiTime,
+              type: 'text',
+              quickReplies: ['Check my confirmation email', 'I do not have my reference', 'Hospital reception'],
+            },
+          ]);
+          return;
+        }
+
+        // Case B: Reference number provided -> Fetch details & dispatch 2FA verification code via Resend
+        const aptRef = detectedRef;
+        setAwaitingRefPurpose(null);
+
+        try {
+          const verifyDispatch = await api.sendAppointmentVerification(aptRef, purpose);
+          const targetApt = verifyDispatch.appointment;
+
+          setPendingVerificationState({
+            appointmentId: aptRef,
+            purpose,
+            appointment: targetApt,
+            maskedEmail: verifyDispatch.maskedEmail,
+          });
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'msg-ai-verify-' + Date.now(),
+              sender: 'ai',
+              text: `I found your appointment **${aptRef}** with **${targetApt?.doctorName || 'Specialist'}** (${targetApt?.department || 'Outpatient Clinic'}) on **${targetApt?.date} at ${targetApt?.time}** for patient **${targetApt?.patientName}**.\n\n🔒 **Identity Verification Required**\nTo confirm you are authorized to ${purpose} this consultation, a 6-digit security code has been sent via Resend to **${verifyDispatch.maskedEmail || 'your email'}**.\n\nPlease enter the 6-digit code below to proceed:`,
+              timestamp: aiTime,
+              type: 'verification-code',
+              verificationData: {
+                appointmentId: aptRef,
+                purpose,
+                patientName: targetApt?.patientName,
+                maskedEmail: verifyDispatch.maskedEmail,
+                doctorName: targetApt?.doctorName,
+                department: targetApt?.department,
+                date: targetApt?.date,
+                time: targetApt?.time,
+              },
+            },
+          ]);
+          return;
+        } catch (err: any) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: 'msg-ai-err-' + Date.now(),
+              sender: 'ai',
+              text: `🔍 ${err.message || `We could not locate an active appointment with Reference Number **${aptRef}**.\n\nPlease verify your reference number from your confirmation email or contact hospital reception.`}`,
+              timestamp: aiTime,
+              type: 'text',
+              quickReplies: ['Try another reference number', 'Book a new appointment', 'Contact front desk'],
+            },
+          ]);
+          return;
+        }
+      }
+
+      // Case C: User just typed an appointment reference number like "APT-2026-1933" without explicit intent
+      if (detectedRef && !isCancelIntent && !isRescheduleIntent) {
+        const aptRef = detectedRef;
+        try {
+          const lookup = await api.lookupAppointment(aptRef);
+          if (lookup.appointments && lookup.appointments.length > 0) {
+            const apt = lookup.appointments[0];
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'msg-ai-found-' + Date.now(),
+                sender: 'ai',
+                text: `I located appointment **${apt.id}** for **${apt.patientName}** with **${apt.doctorName}** (${apt.department}) on **${apt.date} at ${apt.time}** (Status: **${apt.status}**).\n\nHow would you like to manage this appointment?`,
+                timestamp: aiTime,
+                type: 'text',
+                quickReplies: [
+                  `Reschedule ${apt.id}`,
+                  `Cancel ${apt.id}`,
+                  'Book another consultation',
+                ],
+              },
+            ]);
+            return;
+          }
+        } catch {
+          // fall through to standard reply
+        }
+      }
+
+      // =========================================================================
+      // 2. NEW APPOINTMENT BOOKING ONLY: In-chat booking form
+      // =========================================================================
       if (aiResponse.intent === 'collect_info') {
         if (aiResponse.doctor) {
           const doc = aiResponse.doctor;
@@ -500,118 +630,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
           },
         ]);
         return;
-      }
-
-      // Check intent for reschedule or cancel
-      const idMatch = text.match(/APT-\d{4}-\d{4}|APT-[\w-]+|MC-[\w-]+/i);
-      const isCancelIntent =
-        aiResponse.intent === 'cancel' ||
-        /cancel/i.test(text) ||
-        awaitingRefPurpose === 'cancel';
-      const isRescheduleIntent =
-        aiResponse.intent === 'reschedule' ||
-        /reschedule|change.*slot|change.*date|change.*time|move.*appointment/i.test(text) ||
-        awaitingRefPurpose === 'reschedule';
-
-      if (isRescheduleIntent || isCancelIntent) {
-        const purpose: 'reschedule' | 'cancel' = isCancelIntent ? 'cancel' : 'reschedule';
-
-        // Case A: No reference number was provided yet
-        if (!idMatch) {
-          setAwaitingRefPurpose(purpose);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: 'msg-ai-req-ref-' + Date.now(),
-              sender: 'ai',
-              text: `I would be pleased to help you **${purpose}** your appointment.\n\nTo locate your booking in our hospital system and protect patient privacy, could you please provide your **Appointment Reference Number**?\n\n*(For example: \`APT-2026-1933\` as shown in your booking confirmation email or SMS)*`,
-              timestamp: aiTime,
-              type: 'text',
-              quickReplies: ['Check my confirmation email', 'I do not have my reference', 'Hospital reception'],
-            },
-          ]);
-          return;
-        }
-
-        // Case B: Reference number provided -> Fetch details & dispatch 2FA verification code via Resend
-        const aptRef = idMatch[0].toUpperCase();
-        setAwaitingRefPurpose(null);
-
-        try {
-          const verifyDispatch = await api.sendAppointmentVerification(aptRef, purpose);
-          const targetApt = verifyDispatch.appointment;
-
-          setPendingVerificationState({
-            appointmentId: aptRef,
-            purpose,
-            appointment: targetApt,
-            maskedEmail: verifyDispatch.maskedEmail,
-          });
-
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: 'msg-ai-verify-' + Date.now(),
-              sender: 'ai',
-              text: `I found your appointment **${aptRef}** with **${targetApt?.doctorName || 'Specialist'}** (${targetApt?.department || 'Outpatient Clinic'}) on **${targetApt?.date} at ${targetApt?.time}** for patient **${targetApt?.patientName}**.\n\n🔒 **Identity Verification Required**\nTo confirm you are authorized to ${purpose} this consultation, a 6-digit security code has been sent via Resend to **${verifyDispatch.maskedEmail || 'your email'}**.\n\nPlease enter the 6-digit code below to proceed:`,
-              timestamp: aiTime,
-              type: 'verification-code',
-              verificationData: {
-                appointmentId: aptRef,
-                purpose,
-                patientName: targetApt?.patientName,
-                maskedEmail: verifyDispatch.maskedEmail,
-                doctorName: targetApt?.doctorName,
-                department: targetApt?.department,
-                date: targetApt?.date,
-                time: targetApt?.time,
-              },
-            },
-          ]);
-          return;
-        } catch (err: any) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: 'msg-ai-err-' + Date.now(),
-              sender: 'ai',
-              text: `🔍 ${err.message || `We could not locate an active appointment with Reference Number **${aptRef}**.\n\nPlease verify your reference number from your confirmation email or provide the phone number used during booking.`}`,
-              timestamp: aiTime,
-              type: 'text',
-              quickReplies: ['Try another reference number', 'Book a new appointment', 'Contact front desk'],
-            },
-          ]);
-          return;
-        }
-      }
-
-      // Case C: User just typed an appointment reference number like "APT-2026-1933" without intent
-      if (idMatch && !isCancelIntent && !isRescheduleIntent) {
-        const aptRef = idMatch[0].toUpperCase();
-        try {
-          const lookup = await api.lookupAppointment(aptRef);
-          if (lookup.appointments && lookup.appointments.length > 0) {
-            const apt = lookup.appointments[0];
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'msg-ai-found-' + Date.now(),
-                sender: 'ai',
-                text: `I located appointment **${apt.id}** for **${apt.patientName}** with **${apt.doctorName}** (${apt.department}) on **${apt.date} at ${apt.time}** (Status: **${apt.status}**).\n\nHow would you like to manage this appointment?`,
-                timestamp: aiTime,
-                type: 'text',
-                quickReplies: [
-                  `Reschedule ${apt.id}`,
-                  `Cancel ${apt.id}`,
-                  'Book another consultation',
-                ],
-              },
-            ]);
-            return;
-          }
-        } catch {
-          // fall through to standard reply
-        }
       }
 
       // Standard text response
