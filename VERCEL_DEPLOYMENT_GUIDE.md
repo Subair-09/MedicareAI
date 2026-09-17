@@ -64,5 +64,5 @@ In your Vercel Project Settings under **Settings > Environment Variables**, add 
 ## 🛠️ How It Works Under the Hood
 
 - **Frontend (`dist/`)**: Built using Vite and hosted across Vercel's global Edge CDN network with high-speed asset caching and instant invalidation.
-- **Backend API (`/api/*`)**: Automatically routed by `vercel.json` to the serverless function handler at `/api/index.ts`. All Express endpoints (`/api/doctors`, `/api/ai/chat`, `/api/appointments`, `/api/patients`, `/api/upload`, etc.) run as a lightweight, scalable serverless function with a 60-second execution allowance.
+- **Backend API (`/api/*`)**: Automatically routed by `vercel.json` to the serverless function handler at `/api/index.js` (bundled cleanly with `esbuild` via `npm run build`). All Express endpoints (`/api/doctors`, `/api/ai/chat`, `/api/appointments`, `/api/patients`, `/api/admin/login`, `/api/upload`, etc.) run as a lightweight, scalable, and fully self-contained serverless function with a 60-second execution allowance and no external module resolution issues.
 - **Single Page Application Routing**: All non-API frontend paths (`/`, `/admin`, `/doctors`, etc.) seamlessly fallback to `/index.html` for client-side routing.
