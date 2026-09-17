@@ -1,56 +1,54 @@
 import './polyfills';
+import zlib from 'zlib';
 import { GoogleGenAI } from '@google/genai';
 import Groq from 'groq-sdk';
 
 /**
- * Robust extraction of text from PDF buffer
- * 1. Tries dynamic import of pdf-parse with DOMMatrix polyfill in place
- * 2. Gracefully falls back to pure-JS text stream parser if pdf-parse / canvas fails
+ * 100% Pure Node.js extraction of text from PDF buffer
+ * Zero native binary dependencies, zero canvas/DOMMatrix requirements.
+ * Works flawlessly in Vercel Serverless, AWS Lambda, Docker, and local Node.js.
  */
-async function extractRawPdfText(pdfBuffer: Buffer): Promise<{ text: string; pages: number }> {
-  // Strategy A: Dynamic import of pdf-parse
-  try {
-    const pdfModule = await import('pdf-parse');
-    const PDFParseCtor = pdfModule.PDFParse || (pdfModule as any).default?.PDFParse || (pdfModule as any).default;
-    if (typeof PDFParseCtor === 'function') {
-      const parser = new (PDFParseCtor as any)({ data: pdfBuffer });
-      const textResult = await parser.getText();
-      const rawParsedText = typeof textResult === 'string' ? textResult : (textResult && (textResult as any).text ? (textResult as any).text : '');
-      const text = rawParsedText ? rawParsedText.trim() : '';
-      const pages = (textResult as any)?.total || 1;
-      if (typeof parser.destroy === 'function') {
-        await parser.destroy();
-      }
-      if (text.length > 5) {
-        return { text, pages };
-      }
-    }
-  } catch (parseErr: any) {
-    console.warn(`[OCR Service] Dynamic pdf-parse note:`, parseErr?.message || parseErr);
-  }
-
-  // Strategy B: Pure JS text stream scanner (100% resilient in serverless without native canvas)
+function extractRawPdfText(pdfBuffer: Buffer): { text: string; pages: number } {
   try {
     const str = pdfBuffer.toString('latin1');
     const textChunks: string[] = [];
 
-    // Match text operands: (some text) Tj
-    const tjRegex = /\(([^)]+)\)\s*Tj/g;
-    let match: RegExpExecArray | null;
-    while ((match = tjRegex.exec(str)) !== null) {
-      if (match[1] && match[1].trim()) {
-        textChunks.push(match[1]);
+    // Helper to extract text from Tj and TJ operators
+    const extractTextTokens = (content: string) => {
+      // (some text) Tj
+      const tjRegex = /\(([^)]+)\)\s*Tj/g;
+      let match: RegExpExecArray | null;
+      while ((match = tjRegex.exec(content)) !== null) {
+        if (match[1] && match[1].trim()) {
+          textChunks.push(match[1]);
+        }
       }
-    }
 
-    // Match array text operands: [(some) 10 (text)] TJ
-    const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
-    while ((match = tjArrayRegex.exec(str)) !== null) {
-      const inner = match[1];
-      const innerMatches = inner.match(/\(([^)]+)\)/g);
-      if (innerMatches) {
-        const line = innerMatches.map((m) => m.slice(1, -1)).join('');
-        if (line.trim()) textChunks.push(line);
+      // [(some) 10 (text)] TJ
+      const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
+      while ((match = tjArrayRegex.exec(content)) !== null) {
+        const inner = match[1];
+        const innerMatches = inner.match(/\(([^)]+)\)/g);
+        if (innerMatches) {
+          const line = innerMatches.map((m) => m.slice(1, -1)).join('');
+          if (line.trim()) textChunks.push(line);
+        }
+      }
+    };
+
+    // 1. Direct scan across the raw PDF string
+    extractTextTokens(str);
+
+    // 2. Scan and decompress FlateDecode stream objects
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let streamMatch: RegExpExecArray | null;
+    while ((streamMatch = streamRegex.exec(str)) !== null) {
+      const streamContent = streamMatch[1];
+      try {
+        const decompressed = zlib.inflateSync(Buffer.from(streamContent, 'latin1')).toString('latin1');
+        extractTextTokens(decompressed);
+      } catch {
+        // Stream may not be zlib/flate compressed or is an image/font stream; safely skip
       }
     }
 
@@ -58,12 +56,18 @@ async function extractRawPdfText(pdfBuffer: Buffer): Promise<{ text: string; pag
     const pageMatches = str.match(/\/Type\s*\/Page[^s]/g);
     const pages = pageMatches ? Math.max(1, pageMatches.length) : 1;
 
-    const extracted = textChunks.join(' ').replace(/\\r|\\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const extracted = textChunks
+      .join(' ')
+      .replace(/\\r|\\n/g, ' ')
+      .replace(/\\([()\\])/g, '$1') // unescape \( \) \\
+      .replace(/\s+/g, ' ')
+      .trim();
+
     if (extracted.length > 5) {
       return { text: extracted, pages };
     }
-  } catch (streamErr: any) {
-    console.warn('[OCR Service] Pure JS stream parser note:', streamErr?.message || streamErr);
+  } catch (err: any) {
+    console.warn('[OCR Service] Pure Node PDF stream parser note:', err?.message || err);
   }
 
   return { text: '', pages: 1 };

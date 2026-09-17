@@ -3065,55 +3065,50 @@ var VerificationService = class {
 var verificationService = new VerificationService();
 
 // server/ocrService.ts
+import zlib from "zlib";
 import { GoogleGenAI as GoogleGenAI2 } from "@google/genai";
 import Groq2 from "groq-sdk";
-async function extractRawPdfText(pdfBuffer) {
-  try {
-    const pdfModule = await import("pdf-parse");
-    const PDFParseCtor = pdfModule.PDFParse || pdfModule.default?.PDFParse || pdfModule.default;
-    if (typeof PDFParseCtor === "function") {
-      const parser = new PDFParseCtor({ data: pdfBuffer });
-      const textResult = await parser.getText();
-      const rawParsedText = typeof textResult === "string" ? textResult : textResult && textResult.text ? textResult.text : "";
-      const text = rawParsedText ? rawParsedText.trim() : "";
-      const pages = textResult?.total || 1;
-      if (typeof parser.destroy === "function") {
-        await parser.destroy();
-      }
-      if (text.length > 5) {
-        return { text, pages };
-      }
-    }
-  } catch (parseErr) {
-    console.warn(`[OCR Service] Dynamic pdf-parse note:`, parseErr?.message || parseErr);
-  }
+function extractRawPdfText(pdfBuffer) {
   try {
     const str = pdfBuffer.toString("latin1");
     const textChunks = [];
-    const tjRegex = /\(([^)]+)\)\s*Tj/g;
-    let match;
-    while ((match = tjRegex.exec(str)) !== null) {
-      if (match[1] && match[1].trim()) {
-        textChunks.push(match[1]);
+    const extractTextTokens = (content) => {
+      const tjRegex = /\(([^)]+)\)\s*Tj/g;
+      let match;
+      while ((match = tjRegex.exec(content)) !== null) {
+        if (match[1] && match[1].trim()) {
+          textChunks.push(match[1]);
+        }
       }
-    }
-    const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
-    while ((match = tjArrayRegex.exec(str)) !== null) {
-      const inner = match[1];
-      const innerMatches = inner.match(/\(([^)]+)\)/g);
-      if (innerMatches) {
-        const line = innerMatches.map((m) => m.slice(1, -1)).join("");
-        if (line.trim()) textChunks.push(line);
+      const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
+      while ((match = tjArrayRegex.exec(content)) !== null) {
+        const inner = match[1];
+        const innerMatches = inner.match(/\(([^)]+)\)/g);
+        if (innerMatches) {
+          const line = innerMatches.map((m) => m.slice(1, -1)).join("");
+          if (line.trim()) textChunks.push(line);
+        }
+      }
+    };
+    extractTextTokens(str);
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let streamMatch;
+    while ((streamMatch = streamRegex.exec(str)) !== null) {
+      const streamContent = streamMatch[1];
+      try {
+        const decompressed = zlib.inflateSync(Buffer.from(streamContent, "latin1")).toString("latin1");
+        extractTextTokens(decompressed);
+      } catch {
       }
     }
     const pageMatches = str.match(/\/Type\s*\/Page[^s]/g);
     const pages = pageMatches ? Math.max(1, pageMatches.length) : 1;
-    const extracted = textChunks.join(" ").replace(/\\r|\\n/g, " ").replace(/\s+/g, " ").trim();
+    const extracted = textChunks.join(" ").replace(/\\r|\\n/g, " ").replace(/\\([()\\])/g, "$1").replace(/\s+/g, " ").trim();
     if (extracted.length > 5) {
       return { text: extracted, pages };
     }
-  } catch (streamErr) {
-    console.warn("[OCR Service] Pure JS stream parser note:", streamErr?.message || streamErr);
+  } catch (err) {
+    console.warn("[OCR Service] Pure Node PDF stream parser note:", err?.message || err);
   }
   return { text: "", pages: 1 };
 }
