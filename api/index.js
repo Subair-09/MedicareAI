@@ -1,3 +1,109 @@
+// server/polyfills.ts
+if (typeof globalThis.DOMMatrix === "undefined") {
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor(init) {
+      this.a = 1;
+      this.b = 0;
+      this.c = 0;
+      this.d = 1;
+      this.e = 0;
+      this.f = 0;
+      this.m11 = 1;
+      this.m12 = 0;
+      this.m13 = 0;
+      this.m14 = 0;
+      this.m21 = 0;
+      this.m22 = 1;
+      this.m23 = 0;
+      this.m24 = 0;
+      this.m31 = 0;
+      this.m32 = 0;
+      this.m33 = 1;
+      this.m34 = 0;
+      this.m41 = 0;
+      this.m42 = 0;
+      this.m43 = 0;
+      this.m44 = 1;
+      this.is2D = true;
+      this.isIdentity = true;
+      if (Array.isArray(init)) {
+        if (init.length === 6) {
+          this.a = init[0];
+          this.b = init[1];
+          this.c = init[2];
+          this.d = init[3];
+          this.e = init[4];
+          this.f = init[5];
+        } else if (init.length === 16) {
+          this.m11 = init[0];
+          this.m12 = init[1];
+          this.m13 = init[2];
+          this.m14 = init[3];
+          this.m21 = init[4];
+          this.m22 = init[5];
+          this.m23 = init[6];
+          this.m24 = init[7];
+          this.m31 = init[8];
+          this.m32 = init[9];
+          this.m33 = init[10];
+          this.m34 = init[11];
+          this.m41 = init[12];
+          this.m42 = init[13];
+          this.m43 = init[14];
+          this.m44 = init[15];
+        }
+      }
+    }
+    transformPoint(point) {
+      return point || { x: 0, y: 0, z: 0, w: 1 };
+    }
+    multiply() {
+      return this;
+    }
+    inverse() {
+      return this;
+    }
+    translate() {
+      return this;
+    }
+    scale() {
+      return this;
+    }
+    rotate() {
+      return this;
+    }
+  };
+}
+if (typeof globalThis.ImageData === "undefined") {
+  globalThis.ImageData = class ImageData {
+    constructor(w, h) {
+      this.width = Math.max(1, w || 1);
+      this.height = Math.max(1, h || 1);
+      this.data = new Uint8ClampedArray(this.width * this.height * 4);
+    }
+  };
+}
+if (typeof globalThis.Path2D === "undefined") {
+  globalThis.Path2D = class Path2D {
+    addPath() {
+    }
+    closePath() {
+    }
+    moveTo() {
+    }
+    lineTo() {
+    }
+    bezierCurveTo() {
+    }
+    quadraticCurveTo() {
+    }
+    arc() {
+    }
+    rect() {
+    }
+  };
+}
+
 // server/app.ts
 import express from "express";
 import crypto2 from "crypto";
@@ -226,7 +332,7 @@ function buildEntityQuery(id) {
   }
   return { id };
 }
-var MongoDatabaseService = class {
+var MongoDatabaseService = class _MongoDatabaseService {
   constructor() {
     this.client = null;
     this.db = null;
@@ -245,22 +351,62 @@ var MongoDatabaseService = class {
     };
     this.initPromise = this.init();
   }
+  static {
+    // Global client promise cache for serverless environments (Vercel)
+    this.globalClientPromise = globalThis._mongoClientPromise || null;
+  }
+  async ensureConnected() {
+    if (this.isConnected && this.db) {
+      return;
+    }
+    if (this.initPromise) {
+      await this.initPromise;
+      if (this.isConnected && this.db) {
+        return;
+      }
+    }
+    const uri = (process.env.MONGODB_URI || "").trim().replace(/^["']|["']$/g, "");
+    if (uri && !this.isConnected) {
+      this.initPromise = this.init();
+      await this.initPromise;
+    }
+  }
   async init() {
-    const uri = process.env.MONGODB_URI?.trim();
-    const dbName = process.env.MONGODB_DB_NAME?.trim() || "medicare_db";
-    if (!uri) {
+    const rawUri = (process.env.MONGODB_URI || "").trim().replace(/^["']|["']$/g, "");
+    let dbName = (process.env.MONGODB_DB_NAME || "").trim().replace(/^["']|["']$/g, "");
+    if (!rawUri) {
       this.isConnected = false;
       this.connectionError = "MONGODB_URI environment variable is not defined. Running in high-performance memory fallback mode.";
       console.log("\u2139\uFE0F [MongoDB] No MONGODB_URI found. Utilizing resilient in-memory collection store.");
       return;
     }
+    if (!dbName) {
+      try {
+        const dummyUrl = rawUri.replace(/^mongodb(\+srv)?:\/\//, "http://");
+        const parsed = new URL(dummyUrl);
+        const pathPart = parsed.pathname.replace(/^\//, "").split("?")[0];
+        if (pathPart) {
+          dbName = decodeURIComponent(pathPart);
+        }
+      } catch (_) {
+      }
+    }
+    if (!dbName) {
+      dbName = "medicare_db";
+    }
     try {
       console.log(`\u{1F50C} [MongoDB] Connecting to MongoDB instance for database: "${dbName}"...`);
-      this.client = new MongoClient(uri, {
-        serverSelectionTimeoutMS: 4e3,
-        connectTimeoutMS: 4e3
-      });
-      await this.client.connect();
+      if (!_MongoDatabaseService.globalClientPromise) {
+        const client = new MongoClient(rawUri, {
+          serverSelectionTimeoutMS: 8e3,
+          connectTimeoutMS: 8e3,
+          maxPoolSize: 10,
+          minPoolSize: 0
+        });
+        _MongoDatabaseService.globalClientPromise = client.connect();
+        globalThis._mongoClientPromise = _MongoDatabaseService.globalClientPromise;
+      }
+      this.client = await _MongoDatabaseService.globalClientPromise;
       await this.client.db(dbName).command({ ping: 1 });
       this.db = this.client.db(dbName);
       this.isConnected = true;
@@ -269,6 +415,8 @@ var MongoDatabaseService = class {
       console.log(`\u2705 [MongoDB] Successfully connected to MongoDB database: "${dbName}"`);
       await this.autoSeedIfEmpty();
     } catch (err) {
+      _MongoDatabaseService.globalClientPromise = null;
+      globalThis._mongoClientPromise = null;
       this.isConnected = false;
       this.connectionError = `MongoDB connection failed: ${err.message || err}. Reverting to local store.`;
       console.warn(`\u26A0\uFE0F [MongoDB] Connection warning: ${this.connectionError}`);
@@ -517,6 +665,7 @@ var MongoDatabaseService = class {
   }
   // --- Knowledge Base Documents ---
   async getDocuments(category, query) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const filter = {};
       if (category && category !== "All Categories") {
@@ -550,6 +699,7 @@ var MongoDatabaseService = class {
     return results;
   }
   async getDocumentById(id) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const doc = await this.db.collection("documents").findOne({
         $or: [{ id }, { _id: id }]
@@ -559,6 +709,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.documents.find((d) => d.id === id) || null;
   }
   async createDocument(docData) {
+    await this.ensureConnected();
     const id = docData.id || `kb-${Date.now()}`;
     const newDoc = {
       ...docData,
@@ -575,6 +726,7 @@ var MongoDatabaseService = class {
     return newDoc;
   }
   async updateDocument(id, updates) {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -592,6 +744,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.documents[index];
   }
   async deleteDocument(id) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection("documents").deleteOne(query);
@@ -603,6 +756,7 @@ var MongoDatabaseService = class {
   }
   // --- Appointments ---
   async getAppointments() {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const appts = await this.db.collection("appointments").find({}).sort({ _id: -1 }).toArray();
       return appts.map((a) => ({ ...a, id: a.id || a._id.toString() }));
@@ -610,6 +764,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.appointments;
   }
   async createAppointment(apptData) {
+    await this.ensureConnected();
     const id = apptData.id || `APT-${Date.now()}`;
     const newAppt = { ...apptData, id };
     if (this.isConnected && this.db) {
@@ -620,6 +775,7 @@ var MongoDatabaseService = class {
     return newAppt;
   }
   async updateAppointment(id, updates) {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -636,6 +792,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.appointments[index];
   }
   async deleteAppointment(id) {
+    await this.ensureConnected();
     const cleanId = (id || "").trim();
     if (!cleanId) return false;
     if (this.isConnected && this.db) {
@@ -658,6 +815,7 @@ var MongoDatabaseService = class {
   }
   // --- Doctors, Departments, Patients, Schedules ---
   async getDoctors() {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const docs = await this.db.collection("doctors").find({}).sort({ _id: -1 }).toArray();
       return docs.map((d) => ({ ...d, id: d.id || d._id.toString() }));
@@ -665,6 +823,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.doctors;
   }
   async createDoctor(doctorData) {
+    await this.ensureConnected();
     const id = doctorData.id || `DOC-${Date.now()}`;
     const newDoc = { ...doctorData, id };
     if (this.isConnected && this.db) {
@@ -675,6 +834,7 @@ var MongoDatabaseService = class {
     return newDoc;
   }
   async updateDoctor(id, updates) {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -691,6 +851,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.doctors[index];
   }
   async deleteDoctor(id) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection("doctors").deleteOne(query);
@@ -701,6 +862,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.doctors.length < prev;
   }
   async getDepartments() {
+    await this.ensureConnected();
     let depts = [];
     if (this.isConnected && this.db) {
       const rawDepts = await this.db.collection("departments").find({}).toArray();
@@ -727,6 +889,7 @@ var MongoDatabaseService = class {
     });
   }
   async createDepartment(deptData) {
+    await this.ensureConnected();
     const id = deptData.id || `dept-${Date.now()}`;
     const slug = deptData.slug || deptData.name?.toLowerCase().replace(/\s+/g, "-") || `dept-${Date.now()}`;
     const createdAt = deptData.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
@@ -752,6 +915,7 @@ var MongoDatabaseService = class {
     return { ...newDept, totalDoctors: count };
   }
   async updateDepartment(id, updates) {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     let updatedDept = null;
     if (this.isConnected && this.db) {
@@ -779,6 +943,7 @@ var MongoDatabaseService = class {
     return { ...updatedDept, totalDoctors: count };
   }
   async deleteDepartment(id) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection("departments").deleteOne(query);
@@ -789,6 +954,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.departments.length < prev;
   }
   async getPatients() {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const pats = await this.db.collection("patients").find({}).sort({ _id: -1 }).toArray();
       return pats.map((p) => ({ ...p, id: p.id || p._id.toString() }));
@@ -796,6 +962,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.patients;
   }
   async createPatient(patientData) {
+    await this.ensureConnected();
     const timestamp = Date.now();
     const id = patientData.id || `pat-${timestamp}`;
     let patientId = patientData.patientId;
@@ -824,6 +991,7 @@ var MongoDatabaseService = class {
     return newPatient;
   }
   async updatePatient(id, updateData) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const col = this.db.collection("patients");
       const { _id, ...safeUpdate } = updateData;
@@ -843,6 +1011,7 @@ var MongoDatabaseService = class {
     return null;
   }
   async deletePatient(id) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection("patients").deleteOne(query);
@@ -853,6 +1022,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.patients.length < prev;
   }
   async getSchedules() {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const schs = await this.db.collection("schedules").find({}).toArray();
       return schs.map((s) => ({ ...s, id: s.id || s._id.toString() }));
@@ -860,6 +1030,7 @@ var MongoDatabaseService = class {
     return this.memoryStore.schedules;
   }
   async createSchedule(data) {
+    await this.ensureConnected();
     const id = data.id || `sch-${Date.now()}`;
     const schedule = {
       ...data,
@@ -874,6 +1045,7 @@ var MongoDatabaseService = class {
     return schedule;
   }
   async updateSchedule(id, updates) {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -897,6 +1069,7 @@ var MongoDatabaseService = class {
     return { id, ...safeUpdates };
   }
   async deleteSchedule(id) {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection("schedules").deleteOne(query);
@@ -924,21 +1097,38 @@ var CloudinaryService = class {
     this.init();
   }
   init() {
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME || "";
-    const apiKey = process.env.CLOUDINARY_API_KEY || process.env.API_KEY || "";
-    const apiSecret = process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET || "";
-    const uploadFolder = process.env.CLOUDINARY_FOLDER || "medicare_hospital";
+    let cloudName = (process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME || "").trim().replace(/^["']|["']$/g, "");
+    let apiKey = (process.env.CLOUDINARY_API_KEY || process.env.API_KEY || "").trim().replace(/^["']|["']$/g, "");
+    let apiSecret = (process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET || "").trim().replace(/^["']|["']$/g, "");
+    const uploadFolder = (process.env.CLOUDINARY_FOLDER || "medicare_hospital").trim();
+    const cloudinaryUrl = (process.env.CLOUDINARY_URL || "").trim().replace(/^["']|["']$/g, "");
+    if (cloudinaryUrl && cloudinaryUrl.startsWith("cloudinary://")) {
+      try {
+        const parsedUrl = new URL(cloudinaryUrl);
+        if (!cloudName) cloudName = parsedUrl.hostname;
+        if (!apiKey) apiKey = decodeURIComponent(parsedUrl.username);
+        if (!apiSecret) apiSecret = decodeURIComponent(parsedUrl.password);
+      } catch (e) {
+        console.warn("\u26A0\uFE0F [Cloudinary] Could not parse CLOUDINARY_URL, relying on fallback parsing:", e?.message);
+        const match = cloudinaryUrl.match(/^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/);
+        if (match) {
+          if (!apiKey) apiKey = match[1];
+          if (!apiSecret) apiSecret = match[2];
+          if (!cloudName) cloudName = match[3];
+        }
+      }
+    }
     if (cloudName && apiKey && apiSecret) {
       cloudinary.config({
-        cloud_name: cloudName.trim(),
-        api_key: apiKey.trim(),
-        api_secret: apiSecret.trim(),
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret,
         secure: true
       });
       this.isConfigured = true;
       this.configStatus = {
         configured: true,
-        cloudName: cloudName.trim(),
+        cloudName,
         hasApiKey: true,
         hasApiSecret: true,
         uploadFolder
@@ -948,11 +1138,11 @@ var CloudinaryService = class {
       this.isConfigured = false;
       this.configStatus = {
         configured: false,
-        cloudName: cloudName ? cloudName.trim() : "Not Set",
+        cloudName: cloudName ? cloudName : "Not Set",
         hasApiKey: !!apiKey,
         hasApiSecret: !!apiSecret,
         uploadFolder,
-        error: "Cloudinary credentials missing. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in Settings/.env."
+        error: "Cloudinary credentials missing. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET (or CLOUDINARY_URL) in Vercel Environment Variables."
       };
       console.log("\u2139\uFE0F [Cloudinary] Credentials not fully configured. File upload will use high-availability simulated cloud storage fallback until configured.");
     }
@@ -2877,7 +3067,56 @@ var verificationService = new VerificationService();
 // server/ocrService.ts
 import { GoogleGenAI as GoogleGenAI2 } from "@google/genai";
 import Groq2 from "groq-sdk";
-import { PDFParse } from "pdf-parse";
+async function extractRawPdfText(pdfBuffer) {
+  try {
+    const pdfModule = await import("pdf-parse");
+    const PDFParseCtor = pdfModule.PDFParse || pdfModule.default?.PDFParse || pdfModule.default;
+    if (typeof PDFParseCtor === "function") {
+      const parser = new PDFParseCtor({ data: pdfBuffer });
+      const textResult = await parser.getText();
+      const rawParsedText = typeof textResult === "string" ? textResult : textResult && textResult.text ? textResult.text : "";
+      const text = rawParsedText ? rawParsedText.trim() : "";
+      const pages = textResult?.total || 1;
+      if (typeof parser.destroy === "function") {
+        await parser.destroy();
+      }
+      if (text.length > 5) {
+        return { text, pages };
+      }
+    }
+  } catch (parseErr) {
+    console.warn(`[OCR Service] Dynamic pdf-parse note:`, parseErr?.message || parseErr);
+  }
+  try {
+    const str = pdfBuffer.toString("latin1");
+    const textChunks = [];
+    const tjRegex = /\(([^)]+)\)\s*Tj/g;
+    let match;
+    while ((match = tjRegex.exec(str)) !== null) {
+      if (match[1] && match[1].trim()) {
+        textChunks.push(match[1]);
+      }
+    }
+    const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
+    while ((match = tjArrayRegex.exec(str)) !== null) {
+      const inner = match[1];
+      const innerMatches = inner.match(/\(([^)]+)\)/g);
+      if (innerMatches) {
+        const line = innerMatches.map((m) => m.slice(1, -1)).join("");
+        if (line.trim()) textChunks.push(line);
+      }
+    }
+    const pageMatches = str.match(/\/Type\s*\/Page[^s]/g);
+    const pages = pageMatches ? Math.max(1, pageMatches.length) : 1;
+    const extracted = textChunks.join(" ").replace(/\\r|\\n/g, " ").replace(/\s+/g, " ").trim();
+    if (extracted.length > 5) {
+      return { text: extracted, pages };
+    }
+  } catch (streamErr) {
+    console.warn("[OCR Service] Pure JS stream parser note:", streamErr?.message || streamErr);
+  }
+  return { text: "", pages: 1 };
+}
 var OcrService = class {
   constructor() {
     this.groq = null;
@@ -2922,18 +3161,7 @@ var OcrService = class {
   async extractTextFromPdf(base64Data, filename = "hospital_document.pdf") {
     const rawBase64 = this.cleanBase64(base64Data);
     const pdfBuffer = Buffer.from(rawBase64, "base64");
-    let parsedText = "";
-    let parsedPages = 1;
-    try {
-      const parser = new PDFParse({ data: pdfBuffer });
-      const textResult = await parser.getText();
-      const rawParsedText = typeof textResult === "string" ? textResult : textResult && textResult.text ? textResult.text : "";
-      parsedText = rawParsedText ? rawParsedText.trim() : "";
-      parsedPages = textResult?.total || 1;
-      await parser.destroy();
-    } catch (parseErr) {
-      console.warn(`[OCR Service] pdf-parse initial pass note:`, parseErr?.message);
-    }
+    const { text: parsedText, pages: parsedPages } = await extractRawPdfText(pdfBuffer);
     const groq = this.getGroqClient();
     if (groq && parsedText.length > 10) {
       try {
@@ -3060,13 +3288,8 @@ Do NOT include markdown fences (no \`\`\`json or \`\`\`), return pure JSON.`;
       }
     }
     try {
-      console.log(`\u{1F4C4} [OCR Service] Running pdf-parse local engine for "${filename}"...`);
-      const parser = new PDFParse({ data: pdfBuffer });
-      const textResult = await parser.getText();
-      const rawParsedText = typeof textResult === "string" ? textResult : textResult && textResult.text ? textResult.text : "";
-      const text = rawParsedText ? rawParsedText.trim() : "";
-      const pageCount = textResult?.total || 1;
-      await parser.destroy();
+      console.log(`\u{1F4C4} [OCR Service] Running local text extraction engine for "${filename}"...`);
+      const { text, pages: pageCount } = await extractRawPdfText(pdfBuffer);
       if (text.length > 10) {
         const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
         const summary = lines.slice(0, 3).join(" ") || `Uploaded clinical guidelines extracted from ${filename}.`;
@@ -3081,7 +3304,7 @@ Do NOT include markdown fences (no \`\`\`json or \`\`\`), return pure JSON.`;
         if (lower.includes("cardio") || lower.includes("heart")) topics.push("Cardiology");
         if (lower.includes("surgery") || lower.includes("operation")) topics.push("Surgical Care");
         if (topics.length === 0) topics.push("Clinical Guidelines", "Hospital Procedures");
-        console.log(`\u2705 [OCR Service] pdf-parse extracted ${text.length} chars (${chunks} chunks) for "${filename}"`);
+        console.log(`\u2705 [OCR Service] Extracted ${text.length} chars (${chunks} chunks) for "${filename}"`);
         return {
           extractedText: text,
           summary,
@@ -3093,7 +3316,7 @@ Do NOT include markdown fences (no \`\`\`json or \`\`\`), return pure JSON.`;
         };
       }
     } catch (parseError) {
-      console.error(`\u274C [OCR Service] pdf-parse fallback failed for "${filename}":`, parseError);
+      console.error(`\u274C [OCR Service] Text extraction fallback failed for "${filename}":`, parseError);
     }
     const fallbackText = `MediCare Hospital Clinical Document: ${filename.replace(/[-_]/g, " ")}
 
@@ -3158,7 +3381,7 @@ var getAuthorizedAdminConfig = () => {
 };
 var failedAttempts = /* @__PURE__ */ new Map();
 var activeSessions = /* @__PURE__ */ new Map();
-setInterval(() => {
+var purgeInterval = setInterval(() => {
   const now = Date.now();
   for (const [token, session] of activeSessions.entries()) {
     if (session.expiresAt <= now) {
@@ -3166,6 +3389,9 @@ setInterval(() => {
     }
   }
 }, 10 * 60 * 1e3);
+if (purgeInterval && typeof purgeInterval.unref === "function") {
+  purgeInterval.unref();
+}
 app.post("/api/admin/login", (req, res) => {
   try {
     const clientIp = req.ip || req.socket.remoteAddress || "client";

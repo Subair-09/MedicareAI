@@ -34,23 +34,42 @@ class CloudinaryService {
   }
 
   public init() {
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME || '';
-    const apiKey = process.env.CLOUDINARY_API_KEY || process.env.API_KEY || '';
-    const apiSecret = process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET || '';
-    const uploadFolder = process.env.CLOUDINARY_FOLDER || 'medicare_hospital';
+    let cloudName = (process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUD_NAME || '').trim().replace(/^["']|["']$/g, '');
+    let apiKey = (process.env.CLOUDINARY_API_KEY || process.env.API_KEY || '').trim().replace(/^["']|["']$/g, '');
+    let apiSecret = (process.env.CLOUDINARY_API_SECRET || process.env.API_SECRET || '').trim().replace(/^["']|["']$/g, '');
+    const uploadFolder = (process.env.CLOUDINARY_FOLDER || 'medicare_hospital').trim();
+
+    // Check for standard CLOUDINARY_URL: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+    const cloudinaryUrl = (process.env.CLOUDINARY_URL || '').trim().replace(/^["']|["']$/g, '');
+    if (cloudinaryUrl && cloudinaryUrl.startsWith('cloudinary://')) {
+      try {
+        const parsedUrl = new URL(cloudinaryUrl);
+        if (!cloudName) cloudName = parsedUrl.hostname;
+        if (!apiKey) apiKey = decodeURIComponent(parsedUrl.username);
+        if (!apiSecret) apiSecret = decodeURIComponent(parsedUrl.password);
+      } catch (e: any) {
+        console.warn('⚠️ [Cloudinary] Could not parse CLOUDINARY_URL, relying on fallback parsing:', e?.message);
+        const match = cloudinaryUrl.match(/^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/);
+        if (match) {
+          if (!apiKey) apiKey = match[1];
+          if (!apiSecret) apiSecret = match[2];
+          if (!cloudName) cloudName = match[3];
+        }
+      }
+    }
 
     if (cloudName && apiKey && apiSecret) {
       cloudinary.config({
-        cloud_name: cloudName.trim(),
-        api_key: apiKey.trim(),
-        api_secret: apiSecret.trim(),
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret,
         secure: true,
       });
 
       this.isConfigured = true;
       this.configStatus = {
         configured: true,
-        cloudName: cloudName.trim(),
+        cloudName: cloudName,
         hasApiKey: true,
         hasApiSecret: true,
         uploadFolder,
@@ -60,11 +79,11 @@ class CloudinaryService {
       this.isConfigured = false;
       this.configStatus = {
         configured: false,
-        cloudName: cloudName ? cloudName.trim() : 'Not Set',
+        cloudName: cloudName ? cloudName : 'Not Set',
         hasApiKey: !!apiKey,
         hasApiSecret: !!apiSecret,
         uploadFolder,
-        error: 'Cloudinary credentials missing. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in Settings/.env.',
+        error: 'Cloudinary credentials missing. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET (or CLOUDINARY_URL) in Vercel Environment Variables.',
       };
       console.log('ℹ️ [Cloudinary] Credentials not fully configured. File upload will use high-availability simulated cloud storage fallback until configured.');
     }

@@ -1,3 +1,4 @@
+import './polyfills';
 import express from 'express';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
@@ -95,8 +96,8 @@ app.use((req, res, next) => {
   // In-memory valid admin session tokens (Token -> expiration timestamp)
   const activeSessions = new Map<string, { email: string; createdAt: number; expiresAt: number }>();
 
-  // Helper to purge expired sessions periodically
-  setInterval(() => {
+  // Helper to purge expired sessions periodically (unref so it does not keep serverless event loops open)
+  const purgeInterval = setInterval(() => {
     const now = Date.now();
     for (const [token, session] of activeSessions.entries()) {
       if (session.expiresAt <= now) {
@@ -104,6 +105,9 @@ app.use((req, res, next) => {
       }
     }
   }, 10 * 60 * 1000);
+  if (purgeInterval && typeof purgeInterval.unref === 'function') {
+    purgeInterval.unref();
+  }
 
   app.post('/api/admin/login', (req, res) => {
     try {

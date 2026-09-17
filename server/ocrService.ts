@@ -1,6 +1,73 @@
+import './polyfills';
 import { GoogleGenAI } from '@google/genai';
 import Groq from 'groq-sdk';
-import { PDFParse } from 'pdf-parse';
+
+/**
+ * Robust extraction of text from PDF buffer
+ * 1. Tries dynamic import of pdf-parse with DOMMatrix polyfill in place
+ * 2. Gracefully falls back to pure-JS text stream parser if pdf-parse / canvas fails
+ */
+async function extractRawPdfText(pdfBuffer: Buffer): Promise<{ text: string; pages: number }> {
+  // Strategy A: Dynamic import of pdf-parse
+  try {
+    const pdfModule = await import('pdf-parse');
+    const PDFParseCtor = pdfModule.PDFParse || (pdfModule as any).default?.PDFParse || (pdfModule as any).default;
+    if (typeof PDFParseCtor === 'function') {
+      const parser = new (PDFParseCtor as any)({ data: pdfBuffer });
+      const textResult = await parser.getText();
+      const rawParsedText = typeof textResult === 'string' ? textResult : (textResult && (textResult as any).text ? (textResult as any).text : '');
+      const text = rawParsedText ? rawParsedText.trim() : '';
+      const pages = (textResult as any)?.total || 1;
+      if (typeof parser.destroy === 'function') {
+        await parser.destroy();
+      }
+      if (text.length > 5) {
+        return { text, pages };
+      }
+    }
+  } catch (parseErr: any) {
+    console.warn(`[OCR Service] Dynamic pdf-parse note:`, parseErr?.message || parseErr);
+  }
+
+  // Strategy B: Pure JS text stream scanner (100% resilient in serverless without native canvas)
+  try {
+    const str = pdfBuffer.toString('latin1');
+    const textChunks: string[] = [];
+
+    // Match text operands: (some text) Tj
+    const tjRegex = /\(([^)]+)\)\s*Tj/g;
+    let match: RegExpExecArray | null;
+    while ((match = tjRegex.exec(str)) !== null) {
+      if (match[1] && match[1].trim()) {
+        textChunks.push(match[1]);
+      }
+    }
+
+    // Match array text operands: [(some) 10 (text)] TJ
+    const tjArrayRegex = /\[(.*?)\]\s*TJ/g;
+    while ((match = tjArrayRegex.exec(str)) !== null) {
+      const inner = match[1];
+      const innerMatches = inner.match(/\(([^)]+)\)/g);
+      if (innerMatches) {
+        const line = innerMatches.map((m) => m.slice(1, -1)).join('');
+        if (line.trim()) textChunks.push(line);
+      }
+    }
+
+    // Estimate page count
+    const pageMatches = str.match(/\/Type\s*\/Page[^s]/g);
+    const pages = pageMatches ? Math.max(1, pageMatches.length) : 1;
+
+    const extracted = textChunks.join(' ').replace(/\\r|\\n/g, ' ').replace(/\s+/g, ' ').trim();
+    if (extracted.length > 5) {
+      return { text: extracted, pages };
+    }
+  } catch (streamErr: any) {
+    console.warn('[OCR Service] Pure JS stream parser note:', streamErr?.message || streamErr);
+  }
+
+  return { text: '', pages: 1 };
+}
 
 export interface OcrExtractionResult {
   extractedText: string;
@@ -62,19 +129,8 @@ export class OcrService {
     const rawBase64 = this.cleanBase64(base64Data);
     const pdfBuffer = Buffer.from(rawBase64, 'base64');
 
-    // 1. Text extraction via pdf-parse
-    let parsedText = '';
-    let parsedPages = 1;
-    try {
-      const parser = new PDFParse({ data: pdfBuffer });
-      const textResult = await parser.getText();
-      const rawParsedText = typeof textResult === 'string' ? textResult : (textResult && (textResult as any).text ? (textResult as any).text : '');
-      parsedText = rawParsedText ? rawParsedText.trim() : '';
-      parsedPages = (textResult as any)?.total || 1;
-      await parser.destroy();
-    } catch (parseErr: any) {
-      console.warn(`[OCR Service] pdf-parse initial pass note:`, parseErr?.message);
-    }
+    // 1. Text extraction via safe parser
+    const { text: parsedText, pages: parsedPages } = await extractRawPdfText(pdfBuffer);
 
     // 2. If Groq is available and text was extracted, analyze with Groq LLM
     const groq = this.getGroqClient();
@@ -213,15 +269,10 @@ Do NOT include markdown fences (no \`\`\`json or \`\`\`), return pure JSON.`;
       }
     }
 
-    // 2. Fallback to pdf-parse if Gemini is not configured or failed
+    // 2. Fallback to local text extraction if Gemini is not configured or failed
     try {
-      console.log(`📄 [OCR Service] Running pdf-parse local engine for "${filename}"...`);
-      const parser = new PDFParse({ data: pdfBuffer });
-      const textResult = await parser.getText();
-      const rawParsedText = typeof textResult === 'string' ? textResult : (textResult && (textResult as any).text ? (textResult as any).text : '');
-      const text = rawParsedText ? rawParsedText.trim() : '';
-      const pageCount = (textResult as any)?.total || 1;
-      await parser.destroy();
+      console.log(`📄 [OCR Service] Running local text extraction engine for "${filename}"...`);
+      const { text, pages: pageCount } = await extractRawPdfText(pdfBuffer);
 
       if (text.length > 10) {
         const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
@@ -240,7 +291,7 @@ Do NOT include markdown fences (no \`\`\`json or \`\`\`), return pure JSON.`;
         if (lower.includes('surgery') || lower.includes('operation')) topics.push('Surgical Care');
         if (topics.length === 0) topics.push('Clinical Guidelines', 'Hospital Procedures');
 
-        console.log(`✅ [OCR Service] pdf-parse extracted ${text.length} chars (${chunks} chunks) for "${filename}"`);
+        console.log(`✅ [OCR Service] Extracted ${text.length} chars (${chunks} chunks) for "${filename}"`);
 
         return {
           extractedText: text,
@@ -253,7 +304,7 @@ Do NOT include markdown fences (no \`\`\`json or \`\`\`), return pure JSON.`;
         };
       }
     } catch (parseError: any) {
-      console.error(`❌ [OCR Service] pdf-parse fallback failed for "${filename}":`, parseError);
+      console.error(`❌ [OCR Service] Text extraction fallback failed for "${filename}":`, parseError);
     }
 
     // 3. Fallback baseline if document was an image-only PDF without OCR match

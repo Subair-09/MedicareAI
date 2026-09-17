@@ -1,3 +1,4 @@
+import './server/polyfills';
 import path from 'path';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';

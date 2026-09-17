@@ -50,30 +50,72 @@ class MongoDatabaseService {
     schedules: JSON.parse(JSON.stringify(INITIAL_SCHEDULE_APPOINTMENTS)),
   };
 
+  // Global client promise cache for serverless environments (Vercel)
+  private static globalClientPromise: Promise<MongoClient> | null = (globalThis as any)._mongoClientPromise || null;
+
   constructor() {
     // Non-blocking initialization
     this.initPromise = this.init();
   }
 
-  public async init(): Promise<void> {
-    const uri = process.env.MONGODB_URI?.trim();
-    const dbName = process.env.MONGODB_DB_NAME?.trim() || 'medicare_db';
+  public async ensureConnected(): Promise<void> {
+    if (this.isConnected && this.db) {
+      return;
+    }
+    if (this.initPromise) {
+      await this.initPromise;
+      if (this.isConnected && this.db) {
+        return;
+      }
+    }
+    const uri = (process.env.MONGODB_URI || '').trim().replace(/^["']|["']$/g, '');
+    if (uri && !this.isConnected) {
+      this.initPromise = this.init();
+      await this.initPromise;
+    }
+  }
 
-    if (!uri) {
+  public async init(): Promise<void> {
+    const rawUri = (process.env.MONGODB_URI || '').trim().replace(/^["']|["']$/g, '');
+    let dbName = (process.env.MONGODB_DB_NAME || '').trim().replace(/^["']|["']$/g, '');
+
+    if (!rawUri) {
       this.isConnected = false;
       this.connectionError = 'MONGODB_URI environment variable is not defined. Running in high-performance memory fallback mode.';
       console.log('ℹ️ [MongoDB] No MONGODB_URI found. Utilizing resilient in-memory collection store.');
       return;
     }
 
+    // If dbName wasn't specified in MONGODB_DB_NAME, check if specified in URI path
+    if (!dbName) {
+      try {
+        const dummyUrl = rawUri.replace(/^mongodb(\+srv)?:\/\//, 'http://');
+        const parsed = new URL(dummyUrl);
+        const pathPart = parsed.pathname.replace(/^\//, '').split('?')[0];
+        if (pathPart) {
+          dbName = decodeURIComponent(pathPart);
+        }
+      } catch (_) {}
+    }
+    if (!dbName) {
+      dbName = 'medicare_db';
+    }
+
     try {
       console.log(`🔌 [MongoDB] Connecting to MongoDB instance for database: "${dbName}"...`);
-      this.client = new MongoClient(uri, {
-        serverSelectionTimeoutMS: 4000,
-        connectTimeoutMS: 4000,
-      });
 
-      await this.client.connect();
+      if (!MongoDatabaseService.globalClientPromise) {
+        const client = new MongoClient(rawUri, {
+          serverSelectionTimeoutMS: 8000,
+          connectTimeoutMS: 8000,
+          maxPoolSize: 10,
+          minPoolSize: 0,
+        });
+        MongoDatabaseService.globalClientPromise = client.connect();
+        (globalThis as any)._mongoClientPromise = MongoDatabaseService.globalClientPromise;
+      }
+
+      this.client = await MongoDatabaseService.globalClientPromise;
       // Test ping
       await this.client.db(dbName).command({ ping: 1 });
       this.db = this.client.db(dbName);
@@ -85,6 +127,8 @@ class MongoDatabaseService {
       // Seed if collections are empty
       await this.autoSeedIfEmpty();
     } catch (err: any) {
+      MongoDatabaseService.globalClientPromise = null;
+      (globalThis as any)._mongoClientPromise = null;
       this.isConnected = false;
       this.connectionError = `MongoDB connection failed: ${err.message || err}. Reverting to local store.`;
       console.warn(`⚠️ [MongoDB] Connection warning: ${this.connectionError}`);
@@ -301,6 +345,7 @@ class MongoDatabaseService {
 
   // --- Knowledge Base Documents ---
   public async getDocuments(category?: string, query?: string): Promise<any[]> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const filter: any = {};
       if (category && category !== 'All Categories') {
@@ -343,6 +388,7 @@ class MongoDatabaseService {
   }
 
   public async getDocumentById(id: string): Promise<any | null> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const doc = await this.db.collection('documents').findOne({
         $or: [{ id }, { _id: id as any }],
@@ -353,6 +399,7 @@ class MongoDatabaseService {
   }
 
   public async createDocument(docData: any): Promise<any> {
+    await this.ensureConnected();
     const id = docData.id || `kb-${Date.now()}`;
     const newDoc = {
       ...docData,
@@ -372,6 +419,7 @@ class MongoDatabaseService {
   }
 
   public async updateDocument(id: string, updates: any): Promise<any | null> {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -391,6 +439,7 @@ class MongoDatabaseService {
   }
 
   public async deleteDocument(id: string): Promise<boolean> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection('documents').deleteOne(query);
@@ -404,6 +453,7 @@ class MongoDatabaseService {
 
   // --- Appointments ---
   public async getAppointments(): Promise<any[]> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const appts = await this.db.collection('appointments').find({}).sort({ _id: -1 }).toArray();
       return appts.map((a: any) => ({ ...a, id: a.id || a._id.toString() }));
@@ -412,6 +462,7 @@ class MongoDatabaseService {
   }
 
   public async createAppointment(apptData: any): Promise<any> {
+    await this.ensureConnected();
     const id = apptData.id || `APT-${Date.now()}`;
     const newAppt = { ...apptData, id };
     if (this.isConnected && this.db) {
@@ -423,6 +474,7 @@ class MongoDatabaseService {
   }
 
   public async updateAppointment(id: string, updates: any): Promise<any | null> {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -441,6 +493,7 @@ class MongoDatabaseService {
   }
 
   public async deleteAppointment(id: string): Promise<boolean> {
+    await this.ensureConnected();
     const cleanId = (id || '').trim();
     if (!cleanId) return false;
 
@@ -470,6 +523,7 @@ class MongoDatabaseService {
 
   // --- Doctors, Departments, Patients, Schedules ---
   public async getDoctors(): Promise<any[]> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const docs = await this.db.collection('doctors').find({}).sort({ _id: -1 }).toArray();
       return docs.map((d: any) => ({ ...d, id: d.id || d._id.toString() }));
@@ -478,6 +532,7 @@ class MongoDatabaseService {
   }
 
   public async createDoctor(doctorData: any): Promise<any> {
+    await this.ensureConnected();
     const id = doctorData.id || `DOC-${Date.now()}`;
     const newDoc = { ...doctorData, id };
     if (this.isConnected && this.db) {
@@ -489,6 +544,7 @@ class MongoDatabaseService {
   }
 
   public async updateDoctor(id: string, updates: any): Promise<any | null> {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -507,6 +563,7 @@ class MongoDatabaseService {
   }
 
   public async deleteDoctor(id: string): Promise<boolean> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection('doctors').deleteOne(query);
@@ -518,6 +575,7 @@ class MongoDatabaseService {
   }
 
   public async getDepartments(): Promise<any[]> {
+    await this.ensureConnected();
     let depts: any[] = [];
     if (this.isConnected && this.db) {
       const rawDepts = await this.db.collection('departments').find({}).toArray();
@@ -549,6 +607,7 @@ class MongoDatabaseService {
   }
 
   public async createDepartment(deptData: any): Promise<any> {
+    await this.ensureConnected();
     const id = deptData.id || `dept-${Date.now()}`;
     const slug = deptData.slug || deptData.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${Date.now()}`;
     const createdAt = deptData.createdAt || new Date().toISOString().split('T')[0];
@@ -585,6 +644,7 @@ class MongoDatabaseService {
   }
 
   public async updateDepartment(id: string, updates: any): Promise<any | null> {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     let updatedDept: any = null;
     if (this.isConnected && this.db) {
@@ -618,6 +678,7 @@ class MongoDatabaseService {
   }
 
   public async deleteDepartment(id: string): Promise<boolean> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection('departments').deleteOne(query);
@@ -629,6 +690,7 @@ class MongoDatabaseService {
   }
 
   public async getPatients(): Promise<any[]> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const pats = await this.db.collection('patients').find({}).sort({ _id: -1 }).toArray();
       return pats.map((p: any) => ({ ...p, id: p.id || p._id.toString() }));
@@ -637,6 +699,7 @@ class MongoDatabaseService {
   }
 
   public async createPatient(patientData: any): Promise<any> {
+    await this.ensureConnected();
     const timestamp = Date.now();
     const id = patientData.id || `pat-${timestamp}`;
     
@@ -671,6 +734,7 @@ class MongoDatabaseService {
   }
 
   public async updatePatient(id: string, updateData: any): Promise<any> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const col = this.db.collection('patients');
       const { _id, ...safeUpdate } = updateData;
@@ -692,6 +756,7 @@ class MongoDatabaseService {
   }
 
   public async deletePatient(id: string): Promise<boolean> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection('patients').deleteOne(query);
@@ -703,6 +768,7 @@ class MongoDatabaseService {
   }
 
   public async getSchedules(): Promise<any[]> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const schs = await this.db.collection('schedules').find({}).toArray();
       return schs.map((s: any) => ({ ...s, id: s.id || s._id.toString() }));
@@ -711,6 +777,7 @@ class MongoDatabaseService {
   }
 
   public async createSchedule(data: any): Promise<any> {
+    await this.ensureConnected();
     const id = data.id || `sch-${Date.now()}`;
     const schedule = {
       ...data,
@@ -727,6 +794,7 @@ class MongoDatabaseService {
   }
 
   public async updateSchedule(id: string, updates: any): Promise<any> {
+    await this.ensureConnected();
     const { _id, ...safeUpdates } = updates;
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
@@ -751,6 +819,7 @@ class MongoDatabaseService {
   }
 
   public async deleteSchedule(id: string): Promise<boolean> {
+    await this.ensureConnected();
     if (this.isConnected && this.db) {
       const query = buildEntityQuery(id);
       const res = await this.db.collection('schedules').deleteOne(query);
