@@ -190,14 +190,10 @@ export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, on
                 <Shield className="w-3.5 h-3.5 text-[#0878F9]" /> Outbound From Address
               </span>
               <div className="font-bold text-[#102A52] text-[13px] truncate">
-                {status?.fromEmail || 'MediCare Hospital <onboarding@resend.dev>'}
+                {status?.fromEmail || 'MediCare Hospital <noreply@medicare.name.ng>'}
               </div>
-              <div className="text-[11.5px] text-[#64748B] flex items-center gap-1 mt-0.5">
-                {status?.isResendDev ? (
-                  <span className="text-[#D97706] font-medium">Sandbox Mode (onboarding@resend.dev)</span>
-                ) : (
-                  <span className="text-[#16A34A] font-medium">Custom Domain Sender</span>
-                )}
+              <div className="text-[11.5px] text-[#16A34A] font-medium flex items-center gap-1 mt-0.5">
+                <span>Verified Domain Sender (medicare.name.ng)</span>
               </div>
             </div>
           </div>
@@ -218,19 +214,22 @@ export const ResendStatusModal: React.FC<ResendStatusModalProps> = ({ isOpen, on
 
             {showVercelGuide && (
               <div className="mt-3 pt-3 border-t border-[#E2E8F0] space-y-2 text-[#475569] leading-relaxed">
-                <p>To enable real email delivery on your Vercel deployment (<code className="font-mono text-[11px] bg-white px-1 py-0.5 rounded border border-[#E2E8F0]">medicare-ai-tawny.vercel.app</code>):</p>
+                <p>To enable live email delivery from <strong>MediCare Hospital &lt;noreply@medicare.name.ng&gt;</strong> on Vercel (<code className="font-mono text-[11px] bg-white px-1 py-0.5 rounded border border-[#E2E8F0]">medicare-ai-tawny.vercel.app</code>):</p>
                 <ol className="list-decimal pl-4 space-y-1.5 text-[11.5px]">
-                  <li>Open your <strong>Vercel Project Settings → Environment Variables</strong>.</li>
+                  <li>Open your <strong>Vercel Project Dashboard → Settings → Environment Variables</strong>.</li>
                   <li>
-                    Add <code className="font-bold font-mono text-[#0F172A] bg-white px-1 py-0.5 rounded">RESEND_API_KEY</code> with your key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-[#0878F9] underline">resend.com/api-keys</a> (starts with <code className="font-mono">re_...</code>).
+                    Add <code className="font-bold font-mono text-[#0F172A] bg-white px-1 py-0.5 rounded">RESEND_API_KEY</code> with your live API key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-[#0878F9] underline">resend.com/api-keys</a> (starts with <code className="font-mono">re_...</code>).
                   </li>
                   <li>
-                    (Optional) Add <code className="font-bold font-mono text-[#0F172A] bg-white px-1 py-0.5 rounded">RESEND_FROM_EMAIL</code> with your verified domain sender (e.g., <code className="font-mono">MediCare &lt;noreply@yourdomain.com&gt;</code>). If omitted, it automatically uses the sandbox <code className="font-mono">onboarding@resend.dev</code>.
+                    Add <code className="font-bold font-mono text-[#0F172A] bg-white px-1 py-0.5 rounded">RESEND_FROM_EMAIL</code> with the value:
+                    <div className="font-mono text-[11px] bg-white p-1.5 mt-1 rounded border border-[#E2E8F0] text-[#0F172A]">
+                      MediCare Hospital &lt;noreply@medicare.name.ng&gt;
+                    </div>
                   </li>
                   <li>
-                    <strong>Important for Free/Testing Tier:</strong> When using <code className="font-mono">onboarding@resend.dev</code>, Resend only allows sending to the email address registered on your Resend account. To send to any patient email, verify your domain under Resend Domains.
+                    Ensure the domain <code className="font-mono text-[#0878F9]">medicare.name.ng</code> is verified in your <a href="https://resend.com/domains" target="_blank" rel="noreferrer" className="text-[#0878F9] underline">Resend Domains dashboard</a>.
                   </li>
-                  <li>After saving variables, click <strong>Redeploy</strong> in Vercel to activate them.</li>
+                  <li>Click <strong>Redeploy</strong> in Vercel to load the new environment variables into the serverless functions.</li>
                 </ol>
               </div>
             )}

@@ -29,11 +29,10 @@ class EmailService {
 
   private getFromEmail(): string {
     const rawFrom = process.env.RESEND_FROM_EMAIL?.trim().replace(/^["']|["']$/g, '');
-    if (rawFrom && !rawFrom.includes('medicare.name.ng')) {
+    if (rawFrom) {
       return rawFrom;
     }
-    // Default to onboarding@resend.dev which works for every Resend account without custom DNS verification
-    return 'MediCare Hospital <onboarding@resend.dev>';
+    return 'MediCare Hospital <noreply@medicare.name.ng>';
   }
 
   public getStatus() {
@@ -45,41 +44,36 @@ class EmailService {
       : 'Not configured';
 
     const currentFrom = this.getFromEmail();
-    const isUsingOnboarding = currentFrom.includes('onboarding@resend.dev');
 
     return {
       configured: hasApiKey,
       maskedApiKey: maskedKey,
       fromEmail: currentFrom,
-      isResendDev: isUsingOnboarding,
       recentLogs: this.recentLogs.slice(0, 25),
       hint: !hasApiKey
         ? 'Set RESEND_API_KEY in your Vercel Environment Variables to enable live email delivery.'
-        : isUsingOnboarding
-        ? 'Using onboarding@resend.dev. In Resend free sandbox mode, you can deliver emails to your registered Resend account email. To send to any recipient, verify your domain in resend.com/domains and set RESEND_FROM_EMAIL.'
-        : `Sending from ${currentFrom}. Ensure this domain is verified with active DNS records in your Resend dashboard.`,
+        : `Sending from ${currentFrom}.`,
     };
   }
 
   /**
-   * Internal helper that sends an email via Resend with automatic fallback
-   * to onboarding@resend.dev if a custom unverified domain is rejected.
+   * Internal helper that sends an email via Resend using the official hospital sender.
    */
   private async dispatchEmail(payload: {
     to: string;
     subject: string;
     html: string;
-  }): Promise<{ success: boolean; data?: any; error?: string; usedFallback?: boolean }> {
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
     const client = this.getClient();
     if (!client) {
       return { success: false, error: 'RESEND_API_KEY not configured' };
     }
 
-    const primaryFrom = this.getFromEmail();
+    const fromAddress = this.getFromEmail();
 
     try {
       const result = await client.emails.send({
-        from: primaryFrom,
+        from: fromAddress,
         to: payload.to,
         subject: payload.subject,
         html: payload.html,
@@ -89,37 +83,10 @@ class EmailService {
         return { success: true, data: result.data };
       }
 
-      // Check if the error is due to unverified domain
-      const errMsg = result.error.message || '';
-      const isDomainError =
-        errMsg.toLowerCase().includes('not verified') ||
-        errMsg.toLowerCase().includes('domain') ||
-        result.error.name === 'validation_error';
-
-      if (isDomainError && !primaryFrom.includes('onboarding@resend.dev')) {
-        console.warn(
-          `[Resend] Custom domain rejected (${errMsg}). Retrying once with default "MediCare Hospital <onboarding@resend.dev>"...`
-        );
-        const retryResult = await client.emails.send({
-          from: 'MediCare Hospital <onboarding@resend.dev>',
-          to: payload.to,
-          subject: payload.subject,
-          html: payload.html,
-        });
-
-        if (!retryResult.error) {
-          console.log('[Resend] Successful delivery via fallback onboarding@resend.dev');
-          return { success: true, data: retryResult.data, usedFallback: true };
-        }
-
-        return {
-          success: false,
-          error: `${retryResult.error.message} (Note: In Resend sandbox mode, test emails can only be sent to your registered account email)`,
-        };
-      }
-
+      console.error(`[Resend Error with ${fromAddress}]:`, result.error);
       return { success: false, error: result.error.message };
     } catch (err: any) {
+      console.error(`[Resend Exception with ${fromAddress}]:`, err.message || err);
       return { success: false, error: err.message || 'Unknown network error' };
     }
   }
