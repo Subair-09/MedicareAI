@@ -16,30 +16,30 @@ export const DoctorProfileModal: React.FC<DoctorProfileModalProps> = ({
   if (!doctor) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#102A52]/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#102A52]/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-[#E2EEFC] overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left"
+        className="bg-white w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-2xl border border-[#E2EEFC] overflow-hidden flex flex-col max-h-[92dvh] animate-in zoom-in-95 duration-200 text-left"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with image */}
-        <div className="relative bg-[#F5FAFF] p-6 border-b border-[#EAF2FC] flex items-center gap-5">
+        <div className="relative bg-[#F5FAFF] p-4 sm:p-6 border-b border-[#EAF2FC] flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-5 text-center sm:text-left">
           <img
             src={doctor.imageUrl}
             alt={doctor.name}
             referrerPolicy="no-referrer"
-            className="w-24 h-24 rounded-2xl object-cover border-2 border-white shadow-md shrink-0"
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-white shadow-md shrink-0"
           />
           <div>
             <div className="inline-flex items-center gap-1 text-[12px] bg-[#EAF4FF] text-[#0878F9] px-2.5 py-0.5 rounded-full font-semibold mb-1">
               {doctor.specialty}
             </div>
-            <h3 className="text-[20px] font-bold text-[#102A52] leading-tight">
+            <h3 className="text-[18px] sm:text-[20px] font-bold text-[#102A52] leading-tight">
               {doctor.name}
             </h3>
-            <p className="text-[13px] text-[#64748B] mt-0.5">
+            <p className="text-[12.5px] sm:text-[13px] text-[#64748B] mt-0.5">
               {doctor.experience}
             </p>
-            <div className="flex items-center gap-1 text-[12px] font-bold text-[#102A52] mt-1.5">
+            <div className="flex items-center justify-center sm:justify-start gap-1 text-[12px] font-bold text-[#102A52] mt-1.5">
               <Star className="w-3.5 h-3.5 fill-[#F59E0B] text-[#F59E0B]" />
               <span>{doctor.rating} / 5.0</span>
               <span className="text-[#94A3B8] font-normal">• Verified Specialist</span>
@@ -48,14 +48,15 @@ export const DoctorProfileModal: React.FC<DoctorProfileModalProps> = ({
 
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 text-[#94A3B8] hover:text-[#102A52] hover:bg-[#EAF2FC] rounded-full transition-colors cursor-pointer"
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 p-2 text-[#94A3B8] hover:text-[#102A52] hover:bg-[#EAF2FC] rounded-full transition-colors cursor-pointer"
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 overflow-y-auto text-[14px]">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto text-[13.5px] sm:text-[14px]">
           <div>
             <h4 className="text-[13px] font-bold uppercase tracking-wider text-[#94A3B8] mb-1">
               Education & Credentials

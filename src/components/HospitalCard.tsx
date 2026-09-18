@@ -9,10 +9,10 @@ export const HospitalCard: React.FC<HospitalCardProps> = ({ onClick }) => {
   return (
     <div
       onClick={onClick}
-      className="w-full max-w-[360px] bg-white rounded-2xl border border-[#E2EEFC] overflow-hidden shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group text-left"
+      className="w-full max-w-[380px] bg-white rounded-2xl border border-[#E2EEFC] overflow-hidden shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group text-left"
     >
       {/* Hospital Building Photograph */}
-      <div className="relative h-44 sm:h-48 w-full overflow-hidden bg-[#EAF4FF]">
+      <div className="relative h-28 xl:h-32 w-full overflow-hidden bg-[#EAF4FF]">
         <img
           src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=800&q=80"
           alt="MediCare Hospital modern campus"
@@ -23,16 +23,16 @@ export const HospitalCard: React.FC<HospitalCardProps> = ({ onClick }) => {
       </div>
 
       {/* Information Area */}
-      <div className="p-4 sm:p-4.5 flex items-center justify-between gap-3 bg-white">
+      <div className="p-3 xl:p-3.5 flex items-center justify-between gap-3 bg-white">
         <div className="flex items-start gap-2.5">
           <div className="pt-0.5 text-[#0878F9] shrink-0">
-            <MapPin className="w-5 h-5 fill-[#EAF4FF]" />
+            <MapPin className="w-4.5 h-4.5 fill-[#EAF4FF]" />
           </div>
           <div>
-            <h4 className="text-[15px] font-bold text-[#102A52] leading-tight">
+            <h4 className="text-[13.5px] xl:text-[14px] font-bold text-[#102A52] leading-tight">
               Our Hospital
             </h4>
-            <p className="text-[12px] text-[#64748B] mt-0.5 leading-snug">
+            <p className="text-[11px] xl:text-[11.5px] text-[#64748B] mt-0.5 leading-snug">
               Quality care, advanced technology, compassionate professionals.
             </p>
           </div>
@@ -41,10 +41,10 @@ export const HospitalCard: React.FC<HospitalCardProps> = ({ onClick }) => {
         {/* Circular Blue Arrow Button */}
         <button
           type="button"
-          className="w-9 h-9 rounded-full bg-[#0878F9] group-hover:bg-[#0768D6] text-white flex items-center justify-center shrink-0 shadow-xs transition-colors"
+          className="w-8 h-8 rounded-full bg-[#0878F9] group-hover:bg-[#0768D6] text-white flex items-center justify-center shrink-0 shadow-xs transition-colors"
           title="Learn more about our hospital"
         >
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

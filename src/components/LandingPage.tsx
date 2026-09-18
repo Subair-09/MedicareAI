@@ -15,10 +15,9 @@ import { DOCTORS } from '../data/hospitalData';
 
 interface LandingPageProps {
   onOpenChatPage: (initialPrompt?: string, doctorName?: string) => void;
-  onOpenAdminLogin?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onOpenChatPage, onOpenAdminLogin }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onOpenChatPage }) => {
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [departmentsModalOpen, setDepartmentsModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('home');
@@ -88,7 +87,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenChatPage, onOpen
       <Navbar
         activeSection={activeSection}
         onOpenChat={() => onOpenChatPage()}
-        onOpenAdminLogin={onOpenAdminLogin}
       />
 
       {/* Main Page Content */}
@@ -138,7 +136,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenChatPage, onOpen
       <Footer
         onOpenPrivacy={() => onOpenChatPage("Can you tell me about MediCare's privacy policy and HIPAA compliance?")}
         onOpenTerms={() => onOpenChatPage("What are the terms of service for MediCare Hospital AI booking?")}
-        onOpenAdminLogin={onOpenAdminLogin}
       />
 
       {/* Modals for doctor profiles and departments */}

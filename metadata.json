@@ -1,6 +1,6 @@
 {
   "name": "MediCare Hospital",
-  "description": "MediCare Hospital AI Assistant - Book, reschedule, or cancel hospital appointments and find doctors with our conversational healthcare AI. No sign up required.",
+  "description": "MediCare Hospital AI Assistant - Book, reschedule, or cancel hospital appointments and find doctors with our conversational healthcare AI.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

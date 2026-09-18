@@ -1,12 +1,11 @@
 import React from 'react';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 interface BrandHeaderProps {
   onBackToLanding?: () => void;
-  onOpenAdminLogin?: () => void;
 }
 
-export const BrandHeader: React.FC<BrandHeaderProps> = ({ onBackToLanding, onOpenAdminLogin }) => {
+export const BrandHeader: React.FC<BrandHeaderProps> = ({ onBackToLanding }) => {
   return (
     <div className="w-full space-y-3.5">
       {/* Back to landing page button with arrow */}
@@ -49,18 +48,8 @@ export const BrandHeader: React.FC<BrandHeaderProps> = ({ onBackToLanding, onOpe
           </div>
         </div>
 
-        {/* Top right tag & Admin Portal link */}
+        {/* Top right tag */}
         <div className="flex items-center gap-3">
-          {onOpenAdminLogin && (
-            <button
-              type="button"
-              onClick={onOpenAdminLogin}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EAF5FF] hover:bg-[#DCEEFE] text-[#0878F9] border border-[#D0E6FC] text-[12px] font-semibold transition-all cursor-pointer shadow-2xs"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Admin Portal</span>
-            </button>
-          )}
           <div className="hidden sm:block text-right text-[12px] font-medium text-[#4B729F] leading-tight">
             <div>Better Care.</div>
             <div>Healthier Tomorrow.</div>

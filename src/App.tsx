@@ -19,7 +19,6 @@ export default function App() {
     | 'landing'
   >(() => {
     const hash = window.location.hash;
-    if (hash === '#chat') return 'chat';
     if (hash === '#landing' || hash === '#home') return 'landing';
     if (hash === '#admin-dashboard') return 'admin-dashboard';
     if (hash === '#admin-appointments') return 'admin-appointments';
@@ -29,8 +28,8 @@ export default function App() {
     if (hash === '#admin-schedules') return 'admin-schedules';
     if (hash === '#admin-knowledge-base') return 'admin-knowledge-base';
     if (hash === '#admin-login' || hash === '#admin') return 'admin-login';
-    // Default view when app is loaded for the first time
-    return 'landing';
+    // Default view: Show the chatbot in full
+    return 'chat';
   });
 
   const [adminUser, setAdminUser] = useState<{ email: string; name: string; role: string; token?: string } | null>(() => {
@@ -51,10 +50,10 @@ export default function App() {
   useEffect(() => {
     const syncViewWithHash = () => {
       const hash = window.location.hash;
-      if (hash === '#chat') {
-        setCurrentView('chat');
-      } else if (hash === '#landing' || hash === '#home' || !hash || hash === '#') {
+      if (hash === '#landing' || hash === '#home') {
         setCurrentView('landing');
+      } else if (hash === '#chat' || !hash || hash === '#') {
+        setCurrentView('chat');
       } else if (hash === '#admin-dashboard') {
         setCurrentView('admin-dashboard');
       } else if (hash === '#admin-appointments' || hash === '#appointments') {
@@ -180,7 +179,6 @@ export default function App() {
     return (
       <AIChatPage
         onBackToLanding={handleBackToLanding}
-        onOpenAdminLogin={handleOpenAdminLogin}
       />
     );
   }
@@ -188,7 +186,6 @@ export default function App() {
   return (
     <LandingPage
       onOpenChatPage={handleOpenChatPage}
-      onOpenAdminLogin={handleOpenAdminLogin}
     />
   );
 }

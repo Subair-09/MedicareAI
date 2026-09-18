@@ -1,169 +1,62 @@
-import React, { useState } from 'react';
-import { 
-  ArrowLeft, 
-  Maximize2, 
-  Minimize2, 
-  ShieldCheck, 
-  PhoneCall, 
-  MessageSquare, 
-  Info,
-  Sparkles
-} from 'lucide-react';
-import { HeroIntro } from './HeroIntro';
-import { FeatureList } from './FeatureList';
-import { HospitalCard } from './HospitalCard';
-import { ServiceIndicators } from './ServiceIndicators';
+import React from 'react';
 import { AIChatPanel } from './chat/AIChatPanel';
 
 interface AIChatPageProps {
   onBackToLanding: () => void;
-  onOpenAdminLogin?: () => void;
 }
 
-export const AIChatPage: React.FC<AIChatPageProps> = ({ onBackToLanding, onOpenAdminLogin }) => {
-  const [activeFeature, setActiveFeature] = useState<string | null>(null);
-  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
-  const [mobileActiveTab, setMobileActiveTab] = useState<'chat' | 'info'>('chat');
-
-  const handleFeatureSelect = (actionId: string) => {
-    setActiveFeature(actionId);
-    setMobileActiveTab('chat');
-  };
-
+export const AIChatPage: React.FC<AIChatPageProps> = ({ onBackToLanding }) => {
   return (
-    <div className="h-[100dvh] w-full bg-[#F5FAFF] relative overflow-hidden selection:bg-[#0878F9]/15 flex flex-col">
+    <div className="min-h-screen w-full bg-[#F1F6FB] relative selection:bg-[#0878F9]/15 flex flex-col">
       
       {/* ====================================================
-          1. FULL-WIDTH CHAT WITH AI PAGE HEADER (Always visible)
+          1. TOP GLOBAL NAVIGATION BAR (Desktop & Mobile)
+          Clean MediCare Hospital brand header
          ==================================================== */}
-      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#E1EDF9] shadow-2xs shrink-0">
-        <div className="max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+      <header className="sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-[#E1EDF9] shadow-xs transition-all">
+        <div className="max-w-[1520px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           
-          {/* Left: Back to Landing + Brand Logo */}
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            <button
-              type="button"
-              onClick={onBackToLanding}
-              id="chat-header-back-btn"
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#F0F6FE] hover:bg-[#E2EEFC] text-[#102A52] hover:text-[#0878F9] border border-[#D0E6FC] text-[12.5px] sm:text-[13px] font-semibold transition-all cursor-pointer group shadow-2xs shrink-0"
-              title="Return to MediCare Landing Page"
-            >
-              <ArrowLeft className="w-4 h-4 text-[#0878F9] transition-transform group-hover:-translate-x-1 shrink-0" />
-              <span className="hidden xs:inline font-medium">Landing Page</span>
-            </button>
-
-            <div className="h-6 w-[1px] bg-[#E2EEFC] hidden sm:block shrink-0" />
-
-            {/* Brand Title */}
+          {/* Left: Brand Logo & Tagline */}
+          <div className="flex items-center gap-3 shrink-0">
             <div 
               onClick={onBackToLanding}
-              className="flex items-center gap-2.5 cursor-pointer group min-w-0"
-              title="Go to MediCare Home"
+              className="flex items-center gap-2.5 cursor-pointer group"
+              title="MediCare Hospital"
             >
-              <div className="w-9 h-9 rounded-xl bg-[#0878F9] flex items-center justify-center text-white shadow-sm shadow-[#0878F9]/25 group-hover:scale-105 transition-transform shrink-0">
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#0878F9] flex items-center justify-center text-white shadow-2xs group-hover:scale-105 transition-transform shrink-0">
+                <svg className="w-4.5 h-4.5 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M10.5 4.5C10.5 3.67157 11.1716 3 12 3C12.8284 3 13.5 3.67157 13.5 4.5V10.5H19.5C20.3284 10.5 21 11.1716 21 12C21 12.8284 20.3284 13.5 19.5 13.5H13.5V19.5C13.5 20.3284 12.8284 21 12 21C11.1716 21 10.5 20.3284 10.5 19.5V13.5H4.5C3.67157 13.5 3 12.8284 3 12C3 11.1716 3.67157 10.5 4.5 10.5H10.5V4.5Z" fill="white" />
                 </svg>
               </div>
-              <div className="flex flex-col text-left truncate">
-                <div className="flex items-center gap-2">
-                  <span className="text-[16.5px] sm:text-[18px] font-black tracking-tight text-[#102A52] leading-tight group-hover:text-[#0878F9] transition-colors truncate">
-                    MediCare <span className="font-semibold text-[#0878F9]">AI Chat</span>
-                  </span>
-                  <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-[#E7F8F1] text-[#15803D] border border-[#C6F0DC]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
-                    Live 24/7
-                  </span>
+              <div className="text-left">
+                <div className="text-[16px] sm:text-[17px] font-extrabold text-[#102A52] tracking-tight leading-none group-hover:text-[#0878F9] transition-colors">
+                  MediCare
                 </div>
-                <span className="text-[11px] font-medium text-[#64748B] hidden lg:block -mt-0.5">
-                  Automated Hospital Consultations & Bookings
-                </span>
+                <div className="text-[10px] sm:text-[11.5px] font-semibold text-[#5A6F8A] leading-tight">
+                  Hospital
+                </div>
               </div>
+            </div>
+
+            <div className="hidden sm:block pl-3 border-l border-[#E2EEFC] text-left">
+              <div className="text-[11px] font-semibold text-[#64748B] leading-tight">Better Care.</div>
+              <div className="text-[11px] font-semibold text-[#64748B] leading-tight">Healthier Tomorrow.</div>
             </div>
           </div>
 
-          {/* Right: Fullscreen Toggle, 911 Emergency, Staff Portal */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            
-            {/* Fullscreen / Split Toggle (Desktop / Tablet) */}
-            <button
-              type="button"
-              onClick={() => setIsFullScreen(!isFullScreen)}
-              id="toggle-fullscreen-chat-btn"
-              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-[#F0F6FE] text-[#102A52] hover:text-[#0878F9] border border-[#D0E6FC] text-[12px] sm:text-[12.5px] font-semibold transition-all cursor-pointer shadow-2xs"
-              title={isFullScreen ? "Restore side-by-side view" : "Expand chat to full screen width"}
-            >
-              {isFullScreen ? (
-                <>
-                  <Minimize2 className="w-3.5 h-3.5 text-[#0878F9]" />
-                  <span>Standard View</span>
-                </>
-              ) : (
-                <>
-                  <Maximize2 className="w-3.5 h-3.5 text-[#0878F9]" />
-                  <span>Full Screen</span>
-                </>
-              )}
-            </button>
-
-            {/* Emergency Hotline */}
-            <a
-              href="tel:911"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFF1F2] hover:bg-[#FFE4E6] text-[#BE123C] border border-[#FECDD3] text-[11.5px] sm:text-[12px] font-bold transition-all shadow-2xs"
-              title="Call Emergency 911 immediately"
-            >
-              <PhoneCall className="w-3.5 h-3.5" />
-              <span>Emergency 911</span>
-            </a>
-
-            {/* Staff Portal Link */}
-            {onOpenAdminLogin && (
-              <button
-                type="button"
-                onClick={onOpenAdminLogin}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EAF5FF] hover:bg-[#DCEEFE] text-[#0878F9] border border-[#D0E6FC] text-[11.5px] sm:text-[12px] font-semibold transition-all cursor-pointer shadow-2xs"
-                title="Staff & Doctor Administration Portal"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Staff Portal</span>
-              </button>
-            )}
+          {/* Right: Active Service Badge */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F0F6FE] border border-[#D5E6F7] text-[12px] font-semibold text-[#0878F9]">
+              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+              <span className="hidden sm:inline">24/7 AI Health Assistant</span>
+              <span className="sm:hidden">Online</span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* ====================================================
-          2. MOBILE SWITCHER TABS (Visible only on < lg screens)
-         ==================================================== */}
-      <div className="lg:hidden bg-white border-b border-[#E1EDF9] px-4 py-2 shrink-0 flex items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => setMobileActiveTab('chat')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[12.5px] font-bold transition-all cursor-pointer ${
-            mobileActiveTab === 'chat'
-              ? 'bg-[#0878F9] text-white shadow-xs'
-              : 'bg-[#F0F6FE] text-[#475569] hover:bg-[#E2EEFC]'
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          <span>Live AI Chat</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileActiveTab('info')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[12.5px] font-bold transition-all cursor-pointer ${
-            mobileActiveTab === 'info'
-              ? 'bg-[#0878F9] text-white shadow-xs'
-              : 'bg-[#F0F6FE] text-[#475569] hover:bg-[#E2EEFC]'
-          }`}
-        >
-          <Info className="w-3.5 h-3.5" />
-          <span>Hospital Info & Actions</span>
-        </button>
-      </div>
-
       {/* Subtle curved background SVG waves at the bottom */}
-      <div className="absolute -bottom-24 left-0 right-0 h-96 pointer-events-none opacity-40 z-0 overflow-hidden">
+      <div className="absolute -bottom-24 left-0 right-0 h-80 pointer-events-none opacity-30 z-0 overflow-hidden">
         <svg
           viewBox="0 0 1440 320"
           fill="none"
@@ -183,60 +76,15 @@ export const AIChatPage: React.FC<AIChatPageProps> = ({ onBackToLanding, onOpenA
       </div>
 
       {/* ====================================================
-          3. MAIN CONTENT CONTAINER (Fills Remaining Screen Height)
+          2. MAIN CONTENT AREA
+          Full-width, centered AI Chat Panel with generous dimensions
          ==================================================== */}
-      <main className="relative z-10 w-full flex-1 min-h-0 px-2 sm:px-4 lg:px-8 py-2 sm:py-3 lg:py-4 overflow-hidden flex flex-col">
-        
-        {/* FULL SCREEN MODE */}
-        {isFullScreen ? (
-          <div className="w-full max-w-[1720px] mx-auto h-full flex flex-col min-h-0">
-            <AIChatPanel 
-              onBackToLanding={onBackToLanding} 
-              externalTrigger={activeFeature} 
-            />
-          </div>
-        ) : (
-          /* STANDARD / SPLIT MODE */
-          <div className="w-full max-w-[1720px] mx-auto h-full grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 xl:gap-8 items-stretch min-h-0">
-            
-            {/* LEFT COLUMN: Hospital Intro & Feature Triggers */}
-            <div 
-              className={`lg:col-span-4 xl:col-span-4 flex flex-col justify-between space-y-4 pr-0 lg:pr-2 h-full overflow-y-auto overscroll-contain [scrollbar-width:thin] ${
-                mobileActiveTab === 'info' ? 'flex' : 'hidden lg:flex'
-              }`}
-            >
-              {/* Main Headline */}
-              <HeroIntro />
-
-              {/* Feature List (5 Quick Action Triggers) */}
-              <FeatureList onSelectFeature={handleFeatureSelect} />
-
-              {/* Hospital Card */}
-              <div className="pt-1">
-                <HospitalCard onClick={onBackToLanding} />
-              </div>
-
-              {/* Service Indicators (Badges) */}
-              <div className="pt-1">
-                <ServiceIndicators />
-              </div>
-            </div>
-
-            {/* RIGHT COLUMN: AI Chat Panel */}
-            <div 
-              className={`lg:col-span-8 xl:col-span-8 flex flex-col h-full min-h-0 ${
-                mobileActiveTab === 'chat' ? 'flex' : 'hidden lg:flex'
-              }`}
-            >
-              <AIChatPanel 
-                onBackToLanding={onBackToLanding} 
-                externalTrigger={activeFeature} 
-              />
-            </div>
-
-          </div>
-        )}
-
+      <main className="relative z-10 w-full flex-1 max-w-[1240px] mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-5 flex flex-col items-center justify-center">
+        <section className="w-full h-[calc(100dvh-5.25rem)] min-h-[540px] sm:h-[760px] lg:h-[calc(100vh-6.75rem)] lg:min-h-[640px] lg:max-h-[900px] flex flex-col">
+          <AIChatPanel 
+            onBackToLanding={onBackToLanding} 
+          />
+        </section>
       </main>
 
     </div>

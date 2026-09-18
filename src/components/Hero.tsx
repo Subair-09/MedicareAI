@@ -152,7 +152,7 @@ export const Hero: React.FC<HeroProps> = ({ onStartChat, onExploreDepartments })
               </div>
 
               {/* OVERLAID FLOATING AI CHAT CARD (Matching exact prompt & reference image) */}
-              <div className="absolute -bottom-6 right-0 sm:right-2 md:-right-4 lg:-right-4 w-[280px] sm:w-[310px] bg-white rounded-2xl p-4 shadow-xl shadow-[#102A52]/10 border border-[#E2EEFC] z-20 transition-all hover:shadow-2xl">
+              <div className="absolute -bottom-6 right-2 sm:right-2 md:-right-4 lg:-right-4 w-[calc(100%-1rem)] max-w-[310px] bg-white rounded-2xl p-3.5 sm:p-4 shadow-xl shadow-[#102A52]/10 border border-[#E2EEFC] z-20 transition-all hover:shadow-2xl">
                 {/* Card Header */}
                 <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#F1F5F9]">
                   <div className="flex items-center gap-2">

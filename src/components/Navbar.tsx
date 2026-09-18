@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
-import { MessageSquare, Plus, Menu, X, ShieldCheck } from 'lucide-react';
+import { MessageSquare, Plus, Menu, X } from 'lucide-react';
 
 interface NavbarProps {
   onOpenChat: () => void;
-  onOpenAdminLogin?: () => void;
   activeSection?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenChat,
-  onOpenAdminLogin,
   activeSection = 'home',
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -69,17 +67,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right: Actions */}
         <div className="hidden md:flex items-center gap-3">
-          {onOpenAdminLogin && (
-            <button
-              type="button"
-              onClick={onOpenAdminLogin}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#F0F7FF] hover:bg-[#E2EEFC] text-[#0878F9] border border-[#D0E6FC] text-[13.5px] font-semibold transition-all cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Admin Portal</span>
-            </button>
-          )}
-
           <button
             onClick={onOpenChat}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#0878F9] hover:bg-[#0768D6] text-white text-[14.5px] font-semibold shadow-sm shadow-[#0878F9]/25 hover:shadow-md hover:shadow-[#0878F9]/30 transition-all cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
@@ -91,16 +78,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Hamburger Button */}
         <div className="md:hidden flex items-center gap-2">
-          {onOpenAdminLogin && (
-            <button
-              type="button"
-              onClick={onOpenAdminLogin}
-              className="p-1.5 rounded-lg text-[#0878F9] bg-[#EAF4FF] border border-[#D0E6FC]"
-              title="Admin Portal"
-            >
-              <ShieldCheck className="w-4.5 h-4.5" />
-            </button>
-          )}
           <button
             onClick={onOpenChat}
             className="px-3 py-1.5 rounded-full bg-[#0878F9] text-white text-[12.5px] font-semibold flex items-center gap-1"
@@ -157,18 +134,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             FAQs
           </a>
           <div className="pt-3 border-t border-[#EAF2FC] space-y-2">
-            {onOpenAdminLogin && (
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenAdminLogin();
-                }}
-                className="w-full py-2.5 rounded-full bg-[#F0F7FF] text-[#0878F9] border border-[#D0E6FC] text-center text-[14.5px] font-semibold flex items-center justify-center gap-2"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Admin Portal</span>
-              </button>
-            )}
             <button
               onClick={() => {
                 setMobileMenuOpen(false);

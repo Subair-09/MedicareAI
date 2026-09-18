@@ -4,10 +4,9 @@ import { Plus } from 'lucide-react';
 interface FooterProps {
   onOpenPrivacy?: () => void;
   onOpenTerms?: () => void;
-  onOpenAdminLogin?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenPrivacy, onOpenTerms, onOpenAdminLogin }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenPrivacy, onOpenTerms }) => {
   return (
     <footer className="w-full bg-[#102A52] text-white pt-16 pb-12 border-t border-[#1C3B6E]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -60,17 +59,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenPrivacy, onOpenTerms, onOp
                   About Us
                 </a>
               </li>
-              {onOpenAdminLogin && (
-                <li>
-                  <button
-                    type="button"
-                    onClick={onOpenAdminLogin}
-                    className="text-[#38BDF8] hover:text-white font-semibold transition-colors text-left cursor-pointer"
-                  >
-                    Admin Portal Login →
-                  </button>
-                </li>
-              )}
             </ul>
           </div>
 

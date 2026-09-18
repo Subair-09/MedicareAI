@@ -168,7 +168,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     };
   }, []);
 
-  // Initial welcome message
+  // Initial welcome message - Exact match to reference image
   const [messages, setMessages] = useState<ChatMessageItem[]>(() => {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -176,15 +176,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
       {
         id: 'msg-welcome',
         sender: 'ai',
-        text: "Hello! 👋 I'm **MediCare AI**, your conversational hospital assistant.\n\nI can help you understand your symptoms, match you with our specialized doctors, find available consultation slots, and confirm your appointment. No sign up or account is required!\n\nCould you please share what symptoms or reason brings you in today?",
+        text: "Hello! 👋 I'm MediCare AI, your hospital assistant.\nHow can I help you today?",
         timestamp: timeStr,
         type: 'text',
         quickReplies: [
-          'Book an appointment',
-          'Flu & fever symptoms',
-          'Need an X-Ray / CT scan',
+          'Book appointment',
           'Reschedule appointment',
-          'Hospital hours & services',
+          'Cancel appointment',
+          'Available doctors',
+          'Hospital services',
         ],
       },
     ];
@@ -196,9 +196,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     handleSendMessage(externalTrigger);
   }, [externalTrigger]);
 
-  // Auto-scroll on new messages or typing state change
+  // Auto-scroll strictly inside the chat stream container without moving the outer chatbot or page
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [messages, isTyping]);
 
   const handleResetChat = () => {
@@ -1164,24 +1169,24 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-3xl border border-[#D5E6F7] shadow-xl overflow-hidden text-left relative">
+    <div className="flex flex-col h-full min-h-0 bg-white rounded-[24px] lg:rounded-[32px] border border-[#DCE8F6] shadow-xl shadow-[#102A52]/5 overflow-hidden text-left relative">
       
-      {/* 1. CHAT HEADER */}
-      <div className="px-5 sm:px-6 py-3.5 sm:py-4 bg-[#F5FAFF] border-b border-[#E1EDF9] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      {/* 1. CHAT HEADER - EXACT MATCH TO REFERENCE */}
+      <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-white border-b border-[#E5EEF8] flex items-center justify-between shrink-0 sticky top-0 z-20">
+        <div className="flex items-center gap-3 sm:gap-3.5">
           <RobotAvatar size="md" />
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-[15.5px] sm:text-[16.5px] font-bold text-[#102A52] leading-tight">
+              <h3 className="text-[16px] sm:text-[17px] font-bold text-[#102A52] tracking-tight leading-tight">
                 MediCare AI
               </h3>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E7F8F1] text-[#20B879]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#20B879] animate-pulse" />
-                Live
+              <span className="inline-flex items-center gap-1.5 text-[12px] sm:text-[12.5px] font-semibold text-[#16A34A]">
+                <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
+                Online
               </span>
             </div>
-            <p className="text-[11.5px] sm:text-[12px] text-[#64748B] mt-0.5">
-              Intelligent Hospital Appointment & Patient Assistant
+            <p className="text-[11.5px] sm:text-[12px] text-[#64748B] mt-0.5 font-normal">
+              Your hospital assistant. Ask me anything!
             </p>
           </div>
         </div>
@@ -1192,25 +1197,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             <button
               type="button"
               onClick={handleResetChat}
-              className="px-3 py-1.5 rounded-full text-[11.5px] sm:text-[12px] font-semibold text-[#5577A6] hover:text-[#0878F9] hover:bg-[#EAF4FF] border border-[#D0E6FC] transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-medium text-[#64748B] hover:text-[#0878F9] hover:bg-[#F0F6FE] border border-[#E2EEFC] transition-colors cursor-pointer shadow-2xs"
               title="Start a new chat conversation"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">New Chat</span>
+              <span>New Chat</span>
             </button>
           )}
-
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#D0E6FC] text-[#0878F9] text-[11px] sm:text-[12px] font-semibold shrink-0 shadow-2xs">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#0878F9]" />
-            <span>No sign-in required</span>
-          </div>
         </div>
       </div>
 
-      {/* 2. CHAT STREAM */}
+      {/* 2. CHAT STREAM (Independently scrollable) */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4 sm:space-y-5 bg-gradient-to-b from-[#FCFDFF] via-[#F8FBFF] to-[#F3F8FD]"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 sm:py-5 space-y-4 bg-white"
       >
         {messages.map((msg) => (
           <div
@@ -1226,10 +1226,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
               {/* Text Message Bubble */}
               {msg.text && (
                 <div
-                  className={`px-4.5 py-3.5 rounded-2xl text-[13.5px] sm:text-[14px] leading-relaxed shadow-2xs whitespace-pre-line ${
+                  className={`px-4.5 py-3 rounded-[20px] text-[13.5px] sm:text-[14px] leading-relaxed shadow-2xs whitespace-pre-line ${
                     msg.sender === 'patient'
-                      ? 'bg-[#0878F9] text-white rounded-tr-xs font-medium ml-auto max-w-[480px]'
-                      : 'bg-white text-[#102A52] border border-[#DCEBFB] rounded-tl-xs'
+                      ? 'bg-[#0878F9] text-white rounded-br-xs font-normal ml-auto max-w-[480px]'
+                      : 'bg-[#F1F6FB] text-[#1E293B] border border-[#E2EEF8]/70 rounded-tl-xs'
                   }`}
                 >
                   {msg.text}
@@ -1539,20 +1539,31 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. INPUT BAR & DYNAMIC QUICK ACTIONS */}
-      <div className="p-3.5 sm:p-4 bg-white border-t border-[#E1EDF9] space-y-2.5 shrink-0">
+      {/* 3. INPUT BAR & DYNAMIC QUICK ACTIONS (Fixed at bottom) */}
+      <div className="p-3 sm:p-4 bg-white border-t border-[#E5EEF8] space-y-2.5 shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center gap-2 bg-[#F8FAFD] rounded-full border border-[#D0E2F5] hover:border-[#B3D4F5] focus-within:border-[#0878F9] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0878F9]/10 transition-all p-1.5 pl-4 shadow-2xs"
+          className="flex items-center gap-2 bg-white rounded-full border border-[#D9E5F2] hover:border-[#B3D4F5] focus-within:border-[#0878F9] focus-within:ring-2 focus-within:ring-[#0878F9]/10 p-1.5 pl-3.5 shadow-2xs transition-all"
         >
+          <button
+            type="button"
+            onClick={() => {
+              handleSendMessage("I'd like to share my medical documents / test results.");
+            }}
+            className="text-[#64748B] hover:text-[#0878F9] transition-colors p-1 cursor-pointer shrink-0"
+            title="Attach documents or reports"
+          >
+            <Paperclip className="w-4.5 h-4.5" />
+          </button>
+
           <input
             type="text"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
-            placeholder="Type your message, complaint, or ask anything..."
+            placeholder="Type your message..."
             className="flex-1 bg-transparent text-[13.5px] sm:text-[14px] text-[#102A52] placeholder-[#94A3B8] focus:outline-none"
           />
 
@@ -1566,21 +1577,20 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
           </button>
         </form>
 
-        {/* Global Quick Action Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 pb-0.5">
+        {/* Global Quick Action Chips - EXACT MATCH TO REFERENCE */}
+        <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] pt-0.5 pb-0.5">
           {[
             'Book appointment',
-            'I have flu symptoms',
-            'Need an X-Ray / CT scan',
             'Reschedule appointment',
             'Cancel appointment',
-            'Visiting hours',
+            'Available doctors',
+            'Hospital services',
           ].map((action) => (
             <button
               key={action}
               type="button"
               onClick={() => handleSendMessage(action)}
-              className="shrink-0 px-3 py-1 rounded-full bg-[#F5FAFF] hover:bg-[#EAF4FF] border border-[#D5E6F7] text-[#0878F9] text-[11.5px] font-semibold transition-all cursor-pointer shadow-2xs hover:border-[#0878F9]"
+              className="shrink-0 px-3.5 py-1.5 rounded-full bg-white hover:bg-[#F0F7FF] border border-[#D9E7F6] text-[#0878F9] text-[12px] font-medium transition-all cursor-pointer shadow-2xs hover:border-[#0878F9] whitespace-nowrap"
             >
               {action}
             </button>

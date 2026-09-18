@@ -35,6 +35,7 @@ export const AiChatModal: React.FC<AiChatModalProps> = ({
   const [realDoctors, setRealDoctors] = useState<AdminDoctor[]>([]);
   const [realDepartments, setRealDepartments] = useState<AdminDepartment[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -97,7 +98,12 @@ export const AiChatModal: React.FC<AiChatModalProps> = ({
   }, [isOpen, initialDoctorName, initialPrompt]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [messages, isTyping]);
 
   if (!isOpen) return null;
@@ -264,7 +270,7 @@ export const AiChatModal: React.FC<AiChatModalProps> = ({
         </div>
 
         {/* Message Stream */}
-        <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-3.5 bg-gradient-to-b from-[#FAFCFF] to-white text-[13.5px]">
+        <div ref={scrollContainerRef} className="flex-1 p-4 sm:p-5 overflow-y-auto overscroll-contain space-y-3.5 bg-gradient-to-b from-[#FAFCFF] to-white text-[13.5px]">
           {messages.map((msg) => (
             <div
               key={msg.id}

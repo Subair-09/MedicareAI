@@ -40,21 +40,21 @@ export const FeatureList: React.FC<FeatureListProps> = ({ onSelectFeature }) => 
   ];
 
   return (
-    <div className="space-y-6 w-full text-left">
+    <div className="space-y-3 xl:space-y-3.5 w-full text-left">
       {features.map((item) => (
         <div
           key={item.id}
           onClick={() => onSelectFeature?.(item.id)}
-          className="flex items-start gap-4 group cursor-pointer transition-transform duration-150 hover:translate-x-1"
+          className="flex items-start gap-3 xl:gap-3.5 group cursor-pointer transition-all duration-150 hover:translate-x-1"
         >
-          <div className="w-12 h-12 rounded-full bg-[#EAF4FF] group-hover:bg-[#D8ECFF] flex items-center justify-center shrink-0 transition-colors shadow-xs">
+          <div className="w-9 h-9 xl:w-10 xl:h-10 rounded-full bg-[#EAF4FF] group-hover:bg-[#D8ECFF] flex items-center justify-center shrink-0 transition-colors shadow-2xs">
             {item.icon}
           </div>
           <div className="pt-0.5">
-            <h3 className="text-[15.5px] font-bold text-[#102A52] group-hover:text-[#0878F9] transition-colors leading-tight">
+            <h3 className="text-[13.5px] xl:text-[14.5px] font-bold text-[#102A52] group-hover:text-[#0878F9] transition-colors leading-tight">
               {item.title}
             </h3>
-            <p className="text-[13px] text-[#64748B] leading-snug mt-1">
+            <p className="text-[11.5px] xl:text-[12px] text-[#64748B] leading-snug mt-0.5">
               {item.description}
             </p>
           </div>
